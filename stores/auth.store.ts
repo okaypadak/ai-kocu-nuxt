@@ -1,22 +1,41 @@
 import { defineStore } from 'pinia'
+import { AuthGateway } from '../api/authGateway'
 
 export type Role = 'student' | 'coach' | 'admin'
 
 export const useAuthStore = defineStore('auth', () => {
-  const supabase = useSupabaseClient()
   const user = useSupabaseUser()
   const loading = ref(false)
   const needsEmailVerification = ref(false)
+  const premiumEndsAt = ref<string | null>(null)
+  const initialized = ref(false)
+  const nuxtApp = useNuxtApp()
+
+  async function fetchSession(force = false) {
+    if (initialized.value && !force) return
+    try {
+      const data = await nuxtApp.$fetch<{
+        session: any
+        user: any
+        premiumEndsAt: string | null
+      }>('/api/auth', { credentials: 'include' })
+      user.value = data?.user ?? null
+      premiumEndsAt.value = data?.premiumEndsAt ?? null
+    } catch (err) {
+      user.value = null
+      premiumEndsAt.value = null
+      if (force) throw err
+    } finally {
+      initialized.value = true
+    }
+  }
 
   async function login(email: string, password: string) {
     loading.value = true
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      })
-      if (error) throw error
-      user.value = data.user
+      const result = await AuthGateway.login(email, password)
+      user.value = result.user
+      premiumEndsAt.value = result.premiumEndsAt ?? null
     } finally {
       loading.value = false
     }
@@ -26,42 +45,47 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     needsEmailVerification.value = false
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            role: role
-          }
-        }
+      const result = await AuthGateway.signup(email, password, {
+        full_name: fullName,
+        role
       })
-      
-      if (error) throw error
-      
-      if (data.user && data.session === null) {
+      if (result.user && !result.session) {
         needsEmailVerification.value = true
       }
-      
-      user.value = data.user
+      user.value = result.user
+      premiumEndsAt.value = result.premiumEndsAt ?? null
     } finally {
       loading.value = false
     }
   }
 
   async function logout() {
-    await supabase.auth.signOut()
+    await AuthGateway.logout()
     user.value = null
+    premiumEndsAt.value = null
     const router = useRouter()
     router.push('/login')
+  }
+
+  async function resetPassword(email: string) {
+    loading.value = true
+    try {
+      await AuthGateway.resetPassword(email)
+    } finally {
+      loading.value = false
+    }
   }
 
   return {
     user,
     loading,
     needsEmailVerification,
+    premiumEndsAt,
+    initialized,
+    fetchSession,
     login,
     signup,
-    logout
+    logout,
+    resetPassword
   }
 })
