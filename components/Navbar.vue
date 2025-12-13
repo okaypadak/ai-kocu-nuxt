@@ -2,11 +2,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAuthStore } from '~/stores/auth.store'
-import { useThemeStore } from '~/stores/theme.store'
+import { useAuthStore } from '../stores/auth.store'
+import { useThemeStore } from '../stores/theme.store'
 
 // 🔔 Notifications (unread sayacı + realtime)
-import { useUnreadCount, useNotificationsRealtime } from '~/queries/useNotifications'
+import { useUnreadCount, useNotificationsRealtime } from '../queries/useNotifications'
 import { storeToRefs } from 'pinia'
 
 const router = useRouter()

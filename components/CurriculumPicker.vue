@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted } from "vue";
-import { useAuthStore } from '~/stores/auth.store';
-import { useSections, useLessons, useTopics } from '~/queries/useCurricula';
-import type { Section, Lesson, Topic } from '~/services/curriculum';
+import { useAuthStore } from "../stores/auth.store";
+import { useSections, useLessons, useTopics } from "../queries/useCurricula";
+import type { Section, Lesson, Topic } from "../api/curriculum";
 
 type PickerPrefill = {
   curriculumId?: string | null;

@@ -12,10 +12,15 @@ export default defineNuxtConfig({
     '@unocss/nuxt',
     '@pinia/nuxt'
   ],
-  css: ['~/assets/main.css'],
+  css: ['~/assets/main.css', '~/style.css', 'vue-toastification/dist/index.css'],
   supabase: {
     redirect: false,
     url: process.env.VITE_SUPABASE_URL,
     key: process.env.VITE_SUPABASE_ANON_KEY
+  },
+  vite: {
+    server: {
+      allowedHosts: true
+    }
   }
 })
