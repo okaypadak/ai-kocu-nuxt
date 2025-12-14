@@ -1,4 +1,4 @@
-<!-- src/views/RozetlerView.vue -->
+<!-- src/views/rozetler.vue -->
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useAuthStore } from "../stores/auth.store";
@@ -13,7 +13,7 @@ import {
 } from "../queries/useBadges";
 
 const auth = useAuthStore();
-const uid = computed(() => auth.user?.id ?? null); // store'unda hangisi varsa
+const uid = computed(() => auth.userId); // store'unda hangisi varsa
 
 // queries
 const { data: allBadges, isLoading: catLoading } = useBadgesCatalog();

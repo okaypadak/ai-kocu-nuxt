@@ -582,8 +582,8 @@ const accuracy = computed(() => {
   /* =========================================================
      KAYDETME
   ========================================================= */
-  const createTopicMut = useCreateExamResult(() => auth.user?.id);
-  const createGeneralMut = useCreateGeneralExamResult(() => auth.user?.id);
+  const createTopicMut = useCreateExamResult(() => auth.userId);
+  const createGeneralMut = useCreateGeneralExamResult(() => auth.userId);
   const saving = ref(false);
   
   const canSave = computed(() => !running.value && sec.value > 0 && !!curriculumId.value);
@@ -765,7 +765,7 @@ const weekEndISO = computed(() => weekEndRef.value.toISOString());
 
 /* supabase'den bu haftan?n exam_results kay?tlar?n? ?ek */
 const { data: weeklyTopicRaw, refetch: refetchWeeklyTopic } = useWeeklyExamResults(
-  () => auth.user?.id,
+  () => auth.userId,
   weekStartISO,
   weekEndISO,
   curriculumId // ayn? m?fredat i?inde kals?n
@@ -773,7 +773,7 @@ const { data: weeklyTopicRaw, refetch: refetchWeeklyTopic } = useWeeklyExamResul
 const {
   data: weeklyGeneralRaw,
   refetch: refetchWeeklyGeneral,
-} = useWeeklyGeneralExamResults(() => auth.user?.id, weekStartISO, weekEndISO, curriculumId);
+} = useWeeklyGeneralExamResults(() => auth.userId, weekStartISO, weekEndISO, curriculumId);
 
 type WeeklyRow = {
   finished_at: string | null;

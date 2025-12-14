@@ -1,4 +1,4 @@
-<!-- src/views/SupportMessagesView.vue -->
+<!-- src/views/destek-mesajlari.vue -->
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import Navbar from "../components/Navbar.vue";
@@ -11,7 +11,7 @@ import {
 import type { SupportMessage } from "../queries/useSupportMessages";
 
 const auth = useAuthStore();
-const userId = computed(() => auth.user?.id ?? undefined);
+const userId = computed(() => auth.userId);
 
 const SUPPORT_ADMIN_ID = (import.meta.env.VITE_SUPPORT_ADMIN_USER_ID as string | undefined) ?? null;
 

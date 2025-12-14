@@ -91,7 +91,7 @@ const NAV_ITEMS: Readonly<NavItem[]> = Object.freeze([
   { label: 'Profil', path: '/profile', icon: 'profile' },
   { label: 'Ders Programı', path: '/ders-programi', icon: 'schedule' },
   { label: 'Zamanlayıcı', path: '/zamanlayici', icon: 'timer' },
-  { label: 'Zaman/Net', path: '/sinav-net', icon: 'exam' },
+  { label: 'Net Artır', path: '/net-artir', icon: 'exam' },
   { label: 'İlerleme', path: '/ilerleme', icon: 'stats' },
   { label: 'Rozetler', path: '/rozetler', icon: 'award' },
   { label: 'Koşu', path: '/kosu', icon: 'award' },

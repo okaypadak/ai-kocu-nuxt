@@ -18,7 +18,7 @@ const {
   data: sprintData,
   isPending: sprintsPending,
   error: sprintsError,
-} = useUserSprints(() => auth.user?.id);
+} = useUserSprints(() => auth.userId);
 
 /* === VERİLER === */
 const trendCanvas = ref<HTMLCanvasElement | null>(null);
@@ -36,21 +36,21 @@ const {
   error: sdError,
   compute: sdCompute,
   streak,
-} = useDailyStudy(() => auth.user?.id);
+} = useDailyStudy(() => auth.userId);
 
 const {
   lessons,
   pending: lpPending,
   error: lpError,
   compute: lpCompute,
-} = useLessonProgress(() => auth.user?.id);
+} = useLessonProgress(() => auth.userId);
 
 const {
   topics,
   pending: tpPending,
   error: tpError,
   compute: tpCompute,
-} = useTopicProgress(() => auth.user?.id);
+} = useTopicProgress(() => auth.userId);
 
 const {
   overall,
@@ -58,7 +58,7 @@ const {
   error: opError,
   compute: opCompute,
 } = useOverallProgress(
-  () => auth.user?.id,
+  () => auth.userId,
   computed(() => auth.preferredCurriculumId)
 );
 
@@ -351,7 +351,7 @@ watch(
 
 /* === LIFECYCLE === */
 onMounted(async () => {
-  if (auth.user?.id) {
+  if (auth.userId) {
     await Promise.all([lpCompute(), opCompute(), tpCompute(), refreshTrend()]);
   }
 });

@@ -343,7 +343,7 @@ onBeforeUnmount(() => {
 /* =========================================================
    ============   KAYDET -> DB MUTATION   ==================
    ========================================================= */
-const createFromTimer = useCreateStudySessionFromTimer(() => auth.user?.id);
+const createFromTimer = useCreateStudySessionFromTimer(() => auth.userId);
 const isCreatePending = computed(() => createFromTimer.isPending.value);
 
 function splitDurationAcrossDays(endTime: Date, durationSeconds: number) {
@@ -469,9 +469,9 @@ const weekRange = computed<{ from: string; to: string }>(() => {
 });
 const selectedDate = ref(weekRange.value.to);
 
-const { data: dailySummary } = useDailySummary(() => auth.user?.id, weekRange);
+const { data: dailySummary } = useDailySummary(() => auth.userId, weekRange);
 const { data: daySessions } = useSessionsByDate(
-  () => auth.user?.id,
+  () => auth.userId,
   selectedDate,
   { order: "desc" }
 );

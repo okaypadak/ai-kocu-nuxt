@@ -557,8 +557,10 @@ import { SprintsAPI, type LessonTeacherMap } from "../api/sprints";
 import { useLessonTeachers } from "../queries/useLessonTeachers";
 import type { LessonTeacher } from "../api/youtubePlaylists";
 
+/* ========== STATE ========== */
 const auth = useAuthStore();
 const toast = useToast();
+
 const isPremiumActive = computed(() => auth.isPremiumActive);
 
 type PlannerState = {
@@ -610,6 +612,10 @@ const selectionSummary = reactive<SelectionSummaryState>({
 /** Queries */
 const curricula = useCurricula();
 const sections = useSections(() => state.curriculumId || null);
+
+/* ... */
+
+const uid = computed(() => auth.userId);
 
 watch(
   () => auth.preferredCurriculumId,
@@ -997,13 +1003,13 @@ const canSubmit = computed(() => {
 });
 
 const mutation = useGenerateSprint();
-const userSprintsQuery = useUserSprints(() => auth.user?.id);
-const deleteSprint = useDeleteSprint(() => auth.user?.id);
+const userSprintsQuery = useUserSprints(() => auth.userId);
+const deleteSprint = useDeleteSprint(() => auth.userId);
 const isSubmitDisabled = computed(
   () => !canSubmit.value || Boolean(mutation.isPending.value)
 );
 const createStatus = ref<"idle" | "creating" | "success">("idle");
-let createButtonReset: ReturnType<typeof setTimeout> | null = null;
+let createButtonReset: any = null;
 const createButtonText = computed(() => {
   if (createStatus.value === "creating" || mutation.isPending.value) {
     return "Oluşturuluyor…";
@@ -1141,7 +1147,7 @@ function setCreateStatus(status: "idle" | "creating" | "success") {
 }
 
 async function onCreate() {
-  if (!auth.user?.id) return;
+  if (!auth.userId) return;
   if (!auth.isPremiumActive) {
     toast.warning("Koşu oluşturmak için lütfen premium kullanıcısı olunuz.");
     return;
@@ -1150,7 +1156,7 @@ async function onCreate() {
   mutation.reset();
   try {
     await mutation.mutateAsync({
-      userId: auth.user.id,
+      userId: auth.userId,
       title: `Sprint • ${new Date().toLocaleDateString()}`,
       startDateISO: state.startDateISO,
       dailyMinutes: state.dailyMinutes,
