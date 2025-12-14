@@ -6,6 +6,20 @@ import {
   PREMIUM_COOKIE_NAME
 } from '~/server/utils/supabase-server'
 
+// Helper to fetch additional profile fields
+async function getProfileExtra(supabase: any, userId: string | null) {
+  if (!userId) return { preferredCurriculumId: null }
+  const { data } = await supabase
+    .from('profiles')
+    .select('preferred_curriculum_id')
+    .eq('user_id', userId)
+    .single()
+  
+  return {
+    preferredCurriculumId: data?.preferred_curriculum_id ?? null
+  }
+}
+
 export default defineEventHandler(async (event) => {
   const method = event.node.req.method ?? 'GET'
   const rawParam = event.context.params?.path ?? ''
@@ -41,14 +55,16 @@ export default defineEventHandler(async (event) => {
     }
 
     const userId = data.user?.id ?? data.session?.user?.id ?? null
-    const premiumEndsAt = userId
-      ? await refreshPremiumCookieOnce(supabase, cookieAdapter, { forceQuery: true, userId })
-      : null
+    const [premiumEndsAt, profileExtra] = await Promise.all([
+       userId ? refreshPremiumCookieOnce(supabase, cookieAdapter, { forceQuery: true, userId }) : Promise.resolve(null),
+       getProfileExtra(supabase, userId)
+    ])
 
     return send(200, {
       session: data.session ?? null,
       user: data.user ?? data.session?.user ?? null,
-      premiumEndsAt
+      premiumEndsAt,
+      preferredCurriculumId: profileExtra.preferredCurriculumId
     })
   }
 
@@ -65,15 +81,18 @@ export default defineEventHandler(async (event) => {
     if (error) return send(error.status ?? 400, { error: error.message })
 
     const userId = data.session?.user?.id ?? data.user?.id ?? null
-    const premiumEndsAt =
-      data.session && userId
-        ? await refreshPremiumCookieOnce(supabase, cookieAdapter, { forceQuery: true, userId })
-        : null
+    // Signup usually creates a profile via triggers or client later, so it might be null initially.
+    // checking anyway.
+    const [premiumEndsAt, profileExtra] = await Promise.all([
+       data.session && userId ? refreshPremiumCookieOnce(supabase, cookieAdapter, { forceQuery: true, userId }) : Promise.resolve(null),
+       getProfileExtra(supabase, userId)
+    ])
 
     return send(200, {
       session: data.session ?? null,
       user: data.user ?? data.session?.user ?? null,
-      premiumEndsAt
+      premiumEndsAt,
+      preferredCurriculumId: profileExtra.preferredCurriculumId
     })
   }
 
@@ -119,14 +138,16 @@ export default defineEventHandler(async (event) => {
     if (error) return send(error.status ?? 400, { error: error.message })
 
     const userId = data.user?.id ?? data.session?.user?.id ?? null
-    const premiumEndsAt = userId
-      ? await refreshPremiumCookieOnce(supabase, cookieAdapter, { forceQuery: true, userId })
-      : null
+    const [premiumEndsAt, profileExtra] = await Promise.all([
+       userId ? refreshPremiumCookieOnce(supabase, cookieAdapter, { forceQuery: true, userId }) : Promise.resolve(null),
+       getProfileExtra(supabase, userId)
+    ])
 
     return send(200, {
       session: data.session ?? null,
       user: data.user ?? data.session?.user ?? null,
-      premiumEndsAt
+      premiumEndsAt,
+      preferredCurriculumId: profileExtra.preferredCurriculumId
     })
   }
 
@@ -138,14 +159,16 @@ export default defineEventHandler(async (event) => {
     if (error) return send(error.status ?? 400, { error: error.message })
 
     const userId = data.user?.id ?? data.session?.user?.id ?? null
-    const premiumEndsAt = userId
-      ? await refreshPremiumCookieOnce(supabase, cookieAdapter, { forceQuery: true, userId })
-      : null
+    const [premiumEndsAt, profileExtra] = await Promise.all([
+       userId ? refreshPremiumCookieOnce(supabase, cookieAdapter, { forceQuery: true, userId }) : Promise.resolve(null),
+       getProfileExtra(supabase, userId)
+    ])
 
     return send(200, {
       session: data.session ?? null,
       user: data.user ?? data.session?.user ?? null,
-      premiumEndsAt
+      premiumEndsAt,
+      preferredCurriculumId: profileExtra.preferredCurriculumId
     })
   }
 
@@ -170,13 +193,13 @@ export default defineEventHandler(async (event) => {
     } catch (err) {
       console.warn('[auth] session fetch failed:', err)
       cookieAdapter.remove(PREMIUM_COOKIE_NAME, { path: '/' })
-      return send(200, { session: null, user: null, premiumEndsAt: null })
+      return send(200, { session: null, user: null, premiumEndsAt: null, preferredCurriculumId: null })
     }
     const resolvedError = userError ?? sessionError
     if (resolvedError) {
       cookieAdapter.remove(PREMIUM_COOKIE_NAME, { path: '/' })
       if (isMissingAuthSessionError(resolvedError)) {
-        return send(200, { session: null, user: null, premiumEndsAt: null })
+        return send(200, { session: null, user: null, premiumEndsAt: null, preferredCurriculumId: null })
       }
       return send(resolvedError.status ?? 401, { error: resolvedError.message })
     }
@@ -191,11 +214,13 @@ export default defineEventHandler(async (event) => {
     }
     const user = userData?.user ?? null
     const userId = user?.id ?? null
-    const premiumEndsAt = userId
-      ? await refreshPremiumCookieOnce(supabase, cookieAdapter, { userId, forceQuery: false })
-      : null
+    
+    const [premiumEndsAt, profileExtra] = await Promise.all([
+       userId ? refreshPremiumCookieOnce(supabase, cookieAdapter, { userId, forceQuery: false }) : Promise.resolve(null),
+       getProfileExtra(supabase, userId)
+    ])
 
-    return send(200, { session, user, premiumEndsAt })
+    return send(200, { session, user, premiumEndsAt, preferredCurriculumId: profileExtra.preferredCurriculumId })
   }
 
   return send(404, { error: 'not_found' })

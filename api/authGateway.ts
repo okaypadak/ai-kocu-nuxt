@@ -19,16 +19,16 @@ async function request<T>(path: string, options: HttpOptions = {}): Promise<T> {
 
 export const AuthGateway = {
     async session() {
-        return request<{ session: any; user: any; premiumEndsAt: string | null }>('')
+        return request<{ session: any; user: any; premiumEndsAt: string | null; preferredCurriculumId: string | null }>('')
     },
     async login(email: string, password: string) {
-        return request<{ session: any; user: any; premiumEndsAt: string | null }>('/login', {
+        return request<{ session: any; user: any; premiumEndsAt: string | null; preferredCurriculumId: string | null }>('/login', {
             method: 'POST',
             body: { email, password }
         })
     },
     async signup(email: string, password: string, data: Record<string, any> = {}) {
-        return request<{ session: any; user: any; premiumEndsAt: string | null }>('/signup', {
+        return request<{ session: any; user: any; premiumEndsAt: string | null; preferredCurriculumId: string | null }>('/signup', {
             method: 'POST',
             body: { email, password, data }
         })
@@ -43,13 +43,13 @@ export const AuthGateway = {
         return request<{ success: boolean }>('/reset-password', { method: 'POST', body: { email } })
     },
     async recoverSession(access_token: string, refresh_token: string) {
-        return request<{ session: any; user: any; premiumEndsAt: string | null }>('/recover-session', {
+        return request<{ session: any; user: any; premiumEndsAt: string | null; preferredCurriculumId: string | null }>('/recover-session', {
             method: 'POST',
             body: { access_token, refresh_token }
         })
     },
     async exchangeCode(code: string) {
-        return request<{ session: any; user: any; premiumEndsAt: string | null }>('/exchange-code', {
+        return request<{ session: any; user: any; premiumEndsAt: string | null; preferredCurriculumId: string | null }>('/exchange-code', {
             method: 'POST',
             body: { code }
         })

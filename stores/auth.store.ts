@@ -8,6 +8,7 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   const needsEmailVerification = ref(false)
   const premiumEndsAt = ref<string | null>(null)
+  const preferredCurriculumId = ref<string | null>(null)
   const initialized = ref(false)
   const nuxtApp = useNuxtApp()
 
@@ -18,12 +19,15 @@ export const useAuthStore = defineStore('auth', () => {
         session: any
         user: any
         premiumEndsAt: string | null
+        preferredCurriculumId: string | null
       }>('/api/auth', { credentials: 'include' })
       user.value = data?.user ?? null
       premiumEndsAt.value = data?.premiumEndsAt ?? null
+      preferredCurriculumId.value = data?.preferredCurriculumId ?? null
     } catch (err) {
       user.value = null
       premiumEndsAt.value = null
+      preferredCurriculumId.value = null
       if (force) throw err
     } finally {
       initialized.value = true
@@ -36,6 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
       const result = await AuthGateway.login(email, password)
       user.value = result.user
       premiumEndsAt.value = result.premiumEndsAt ?? null
+      preferredCurriculumId.value = result.preferredCurriculumId ?? null
     } finally {
       loading.value = false
     }
@@ -54,6 +59,7 @@ export const useAuthStore = defineStore('auth', () => {
       }
       user.value = result.user
       premiumEndsAt.value = result.premiumEndsAt ?? null
+      preferredCurriculumId.value = result.preferredCurriculumId ?? null
     } finally {
       loading.value = false
     }
@@ -63,6 +69,7 @@ export const useAuthStore = defineStore('auth', () => {
     await AuthGateway.logout()
     user.value = null
     premiumEndsAt.value = null
+    preferredCurriculumId.value = null
     const router = useRouter()
     router.push('/login')
   }
@@ -81,6 +88,7 @@ export const useAuthStore = defineStore('auth', () => {
     loading,
     needsEmailVerification,
     premiumEndsAt,
+    preferredCurriculumId,
     initialized,
     fetchSession,
     login,
