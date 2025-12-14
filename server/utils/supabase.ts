@@ -1,111 +1,94 @@
 // ~/utils/supabase.ts
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { useRuntimeConfig } from '#imports'
-import { defineEventHandler, readRawBody, setResponseStatus, setHeader, type H3Event } from 'h3'
 
 /* ------------------------------------------------------------------ */
-/* ENV + PUBLIC CONFIG                                                 */
+/* ENV + PUBLIC CONFIG (local + canlı uyumlu)                          */
 /* ------------------------------------------------------------------ */
 
-const env = (...keys: string[]) => keys.map((k) => (typeof process !== 'undefined' ? process.env?.[k] : undefined)).find(Boolean)
+const pickFirst = (...values: Array<string | undefined | null>) =>
+  values.map((v) => (typeof v === 'string' ? v.trim() : v)).find((v) => Boolean(v))
 
-const formatSecretForLog = (value?: string | null) => {
-  if (value === undefined) return 'undefined'
-  if (value === null) return 'null'
-  if (value.length === 0) return 'empty'
-  if (value.length <= 4) return `${value[0]}*** (len:${value.length})`
-  if (value.length <= 8) return `${value.slice(0, 2)}***${value.slice(-2)} (len:${value.length})`
-  return `${value.slice(0, 4)}...${value.slice(-4)} (len:${value.length})`
+const readServerEnv = (...keys: string[]) => {
+  if (typeof process === 'undefined') return undefined
+  return pickFirst(...keys.map((k) => process.env?.[k]))
 }
 
-const logSupabaseDebug = (label: string, details: Record<string, unknown>) => {
-  if (typeof console === 'undefined') return
-  try {
-    console.log(`[supabase-utils][${label}]`, JSON.stringify(details, null, 2))
-  } catch {
-    console.log(`[supabase-utils][${label}]`, details)
-  }
+const readClientEnv = (...keys: string[]) => {
+  // Vite/Nuxt client build-time env fallback (opsiyonel)
+  const metaEnv = (typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined) as Record<
+    string,
+    string | undefined
+  >
+  if (!metaEnv) return undefined
+  return pickFirst(...keys.map((k) => metaEnv[k]))
 }
 
 export const resolveSupabasePublicConfig = () => {
   const config = useRuntimeConfig()
 
-  const urlEnvKeys = ['NUXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL', 'NUXT_SUPABASE_URL', 'VITE_SUPABASE_URL']
-  const anonKeyEnvKeys = [
-    'NUXT_PUBLIC_SUPABASE_ANON_KEY',
-    'SUPABASE_ANON_KEY',
-    'SUPABASE_KEY',
-    'NUXT_SUPABASE_KEY',
-    'VITE_SUPABASE_ANON_KEY'
-  ]
-
   const supabaseUrl =
-    config.public?.supabaseUrl ||
-    env(
-      'NUXT_PUBLIC_SUPABASE_URL',
-      'SUPABASE_URL',
-      'NUXT_SUPABASE_URL',
-      'VITE_SUPABASE_URL'
-    )
+    pickFirst(
+      config.public?.supabaseUrl,
+      readServerEnv('NUXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL', 'NUXT_SUPABASE_URL', 'VITE_SUPABASE_URL'),
+      readClientEnv('NUXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL', 'NUXT_SUPABASE_URL', 'VITE_SUPABASE_URL')
+    ) ?? undefined
 
   const supabaseAnonKey =
-    config.public?.supabaseAnonKey ||
-    env(
-      'NUXT_PUBLIC_SUPABASE_ANON_KEY',
-      'SUPABASE_ANON_KEY',
-      'SUPABASE_KEY',
-      'NUXT_SUPABASE_KEY',
-      'VITE_SUPABASE_ANON_KEY'
-    )
+    pickFirst(
+      config.public?.supabaseAnonKey,
+      readServerEnv(
+        'NUXT_PUBLIC_SUPABASE_ANON_KEY',
+        'SUPABASE_ANON_KEY',
+        'SUPABASE_KEY',
+        'NUXT_SUPABASE_KEY',
+        'VITE_SUPABASE_ANON_KEY'
+      ),
+      readClientEnv(
+        'NUXT_PUBLIC_SUPABASE_ANON_KEY',
+        'SUPABASE_ANON_KEY',
+        'SUPABASE_KEY',
+        'NUXT_SUPABASE_KEY',
+        'VITE_SUPABASE_ANON_KEY'
+      )
+    ) ?? undefined
 
-  logSupabaseDebug('resolveSupabasePublicConfig', {
-    nodeEnv: typeof process !== 'undefined' ? process.env.NODE_ENV : 'unknown',
-    supabaseUrlResolved: formatSecretForLog(supabaseUrl),
-    supabaseAnonKeyResolved: formatSecretForLog(supabaseAnonKey),
-    runtimeConfigPublicUrl: formatSecretForLog(config.public?.supabaseUrl),
-    runtimeConfigPublicAnonKey: formatSecretForLog(config.public?.supabaseAnonKey),
-    envSupabaseUrlSources: urlEnvKeys.reduce<Record<string, string>>((acc, key) => {
-      acc[key] = formatSecretForLog(typeof process !== 'undefined' ? process.env?.[key] : undefined)
-      return acc
-    }, {}),
-    envSupabaseAnonKeySources: anonKeyEnvKeys.reduce<Record<string, string>>((acc, key) => {
-      acc[key] = formatSecretForLog(typeof process !== 'undefined' ? process.env?.[key] : undefined)
-      return acc
-    }, {})
-  })
+  const supabaseProxyUrl =
+    pickFirst(
+      config.public?.supabaseProxyUrl,
+      readServerEnv('NUXT_PUBLIC_SUPABASE_PROXY_URL', 'VITE_SUPABASE_PROXY_URL'),
+      readClientEnv('NUXT_PUBLIC_SUPABASE_PROXY_URL', 'VITE_SUPABASE_PROXY_URL'),
+      '/api/supabase-proxy'
+    ) ?? '/api/supabase-proxy'
 
-  return { supabaseUrl, supabaseAnonKey }
+  return { supabaseUrl, supabaseAnonKey, supabaseProxyUrl }
 }
 
 const getConfigServerOnly = () => {
-  // Bu fonksiyon yalnızca server-side kullanılmalı.
+  if (typeof process !== 'undefined' && (process as any).client) {
+    throw new Error('getConfigServerOnly yalnızca server-side kullanılmalıdır.')
+  }
+
   const config = useRuntimeConfig()
   const { supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY } = resolveSupabasePublicConfig()
 
   const SUPABASE_SERVICE_ROLE_KEY =
-    config.supabaseServiceRoleKey ||
-    env('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY')
+    pickFirst(
+      config.supabaseServiceRoleKey as string | undefined,
+      readServerEnv('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY')
+    ) ?? undefined
 
   const PREMIUM_COOKIE_SECRET =
-    config.premiumCookieSecret || env('PREMIUM_COOKIE_SECRET')
-
-  logSupabaseDebug('getConfigServerOnly', {
-    resolvedSupabaseUrl: formatSecretForLog(SUPABASE_URL),
-    resolvedSupabaseAnonKey: formatSecretForLog(SUPABASE_ANON_KEY),
-    hasServiceRoleKey: Boolean(SUPABASE_SERVICE_ROLE_KEY),
-    runtimeConfigServiceRoleKey: formatSecretForLog(config.supabaseServiceRoleKey),
-    envServiceRoleKey: formatSecretForLog(typeof process !== 'undefined' ? process.env?.SUPABASE_SERVICE_ROLE_KEY : undefined),
-    premiumCookieSecretPresent: Boolean(PREMIUM_COOKIE_SECRET)
-  })
+    pickFirst(config.premiumCookieSecret as string | undefined, readServerEnv('PREMIUM_COOKIE_SECRET')) ?? undefined
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     throw new Error(
-      'Supabase public config eksik (NUXT_PUBLIC_SUPABASE_URL/SUPABASE_URL ve NUXT_PUBLIC_SUPABASE_ANON_KEY/SUPABASE_ANON_KEY)'
+      'Supabase public config eksik: runtimeConfig.public.supabaseUrl ve runtimeConfig.public.supabaseAnonKey (veya NUXT_PUBLIC_SUPABASE_URL / NUXT_PUBLIC_SUPABASE_ANON_KEY).'
     )
   }
 
   if (!PREMIUM_COOKIE_SECRET) {
-    throw new Error('PREMIUM_COOKIE_SECRET eksik')
+    throw new Error('PREMIUM_COOKIE_SECRET eksik (premium cookie imzalama için gerekli).')
   }
 
   return {
@@ -120,34 +103,19 @@ const getConfigServerOnly = () => {
 /* CLIENT (BROWSER) SUPABASE CLIENT + PROXY FETCH                      */
 /* ------------------------------------------------------------------ */
 
-const resolveProxyUrl = () => {
-  const fromVite =
-    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_PROXY_URL) as string | undefined
-  const fromNode = (typeof process !== 'undefined' ? process.env?.VITE_SUPABASE_PROXY_URL : undefined) as string | undefined
-  const resolved = (fromVite ?? fromNode ?? '/api/supabase-proxy').trim()
-  logSupabaseDebug('resolveProxyUrl', {
-    fromVite: formatSecretForLog(fromVite),
-    fromNode: formatSecretForLog(fromNode),
-    resolved
-  })
-  return resolved
-}
-
 let _browserClient: SupabaseClient | null = null
 
 export const getSupabaseClient = () => {
-  const { supabaseUrl, supabaseAnonKey } = resolveSupabasePublicConfig()
-  logSupabaseDebug('getSupabaseClient', {
-    processServer: typeof process !== 'undefined' ? (process as any)?.server : 'unknown',
-    supabaseUrlPresent: Boolean(supabaseUrl),
-    supabaseAnonKeyPresent: Boolean(supabaseAnonKey)
-  })
+  const { supabaseUrl, supabaseAnonKey, supabaseProxyUrl } = resolveSupabasePublicConfig()
+
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Supabase config missing: set public.supabaseUrl and public.supabaseAnonKey (runtimeConfig.public).')
+    throw new Error('Supabase config missing: runtimeConfig.public.supabaseUrl ve public.supabaseAnonKey ayarlanmalı.')
   }
 
+  const isServer = typeof process !== 'undefined' && Boolean((process as any).server)
+
   // Server tarafında singleton tutmuyoruz (request’ler arası state riski).
-  if (process.server) {
+  if (isServer) {
     return createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: false,
@@ -160,7 +128,7 @@ export const getSupabaseClient = () => {
 
   if (_browserClient) return _browserClient
 
-  const proxyUrl = resolveProxyUrl()
+  const proxyUrl = (supabaseProxyUrl || '/api/supabase-proxy').trim()
   const shouldProxy = proxyUrl.length > 0
 
   const proxiedFetch: typeof fetch = (input, init) => {
@@ -168,7 +136,6 @@ export const getSupabaseClient = () => {
 
     const url = typeof input === 'string' ? input : input.toString()
     const isSupabaseRequest = url.startsWith(supabaseUrl)
-
     if (!isSupabaseRequest) return fetch(input, init)
 
     const forwardedPath = url.replace(supabaseUrl, '')
@@ -224,7 +191,6 @@ const shouldUseSecureCookies = (event: any) => {
   const proto = String(event?.node?.req?.headers?.['x-forwarded-proto'] || '')
   if (proto === 'https') return true
 
-  // Nitro TLS flag (Node)
   return event?.node?.req?.socket?.encrypted === true
 }
 
@@ -259,11 +225,7 @@ const createCookieAdapter = async (event: any): Promise<CookieAdapter> => {
       const values = [...jar.values()]
       event.node.res.setHeader(
         'set-cookie',
-        existing
-          ? Array.isArray(existing)
-            ? existing.concat(values)
-            : [existing, ...values]
-          : values
+        existing ? (Array.isArray(existing) ? existing.concat(values) : [existing, ...values]) : values
       )
     }
   }
@@ -274,11 +236,6 @@ export const createSupabaseServerClient = async (event: any) => {
   const cookieAdapter = await createCookieAdapter(event)
 
   const { createServerClient } = await import('@supabase/ssr')
-
-  logSupabaseDebug('createSupabaseServerClient', {
-    hasSupabaseUrl: Boolean(SUPABASE_URL),
-    hasSupabaseAnonKey: Boolean(SUPABASE_ANON_KEY)
-  })
 
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {
@@ -293,10 +250,6 @@ export const createSupabaseServerClient = async (event: any) => {
 
 export const createSupabaseAdminClient = () => {
   const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = getConfigServerOnly()
-  logSupabaseDebug('createSupabaseAdminClient', {
-    hasSupabaseUrl: Boolean(SUPABASE_URL),
-    hasServiceRoleKey: Boolean(SUPABASE_SERVICE_ROLE_KEY)
-  })
   if (!SUPABASE_SERVICE_ROLE_KEY) return null
 
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -309,9 +262,7 @@ export const createSupabaseAdminClient = () => {
 /* ------------------------------------------------------------------ */
 
 const toBase64 = (bytes: Uint8Array) => {
-  // Node
   if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64')
-  // Edge/Browser
   let s = ''
   for (const b of bytes) s += String.fromCharCode(b)
   return btoa(s)
@@ -350,17 +301,12 @@ const signPremiumPayload = async (payload: string) => {
     ['sign']
   )
 
-  const sig = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(payload)
-  )
-
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload))
   return base64UrlEncode(new Uint8Array(sig))
 }
 
 /* ------------------------------------------------------------------ */
-/* PREMIUM LOGIC                                                      */
+/* PREMIUM LOGIC                                                       */
 /* ------------------------------------------------------------------ */
 
 export const normalizePremiumEndsAt = (value?: string | null) => {
@@ -400,7 +346,11 @@ export const readPremiumFromCookie = async (cookieAdapter: CookieAdapter, userId
   return timingSafeEqual(expected, provided) ? normalized : null
 }
 
-export const persistPremiumCookie = async (cookieAdapter: CookieAdapter, userId?: string | null, endsAt?: string | null) => {
+export const persistPremiumCookie = async (
+  cookieAdapter: CookieAdapter,
+  userId?: string | null,
+  endsAt?: string | null
+) => {
   const serialized = await serializePremiumCookie(userId, endsAt)
   if (!serialized) {
     cookieAdapter.remove(PREMIUM_COOKIE_NAME)
@@ -432,12 +382,7 @@ export const refreshPremiumCookieOnce = async (
     if (cached) return cached
   }
 
-  const { data } = await supabase
-    .from('profiles')
-    .select('premium_ends_at')
-    .eq('user_id', userId)
-    .maybeSingle()
-
+  const { data } = await supabase.from('profiles').select('premium_ends_at').eq('user_id', userId).maybeSingle()
   return persistPremiumCookie(cookieAdapter, userId, data?.premium_ends_at)
 }
 
@@ -451,112 +396,87 @@ export const isMissingAuthSessionError = (err?: { message?: string }) => {
 }
 
 /* ------------------------------------------------------------------ */
-/* API: /api/supabase-proxy/** handler (named export)                  */
+/* API: /api/supabase-proxy/** handler (server-side only at runtime)    */
 /* ------------------------------------------------------------------ */
 
 const FORBIDDEN_HEADERS = new Set(['host', 'connection', 'content-length'])
 
-export const supabaseProxyHandler = defineEventHandler(async (eventInner: any) => {
-    logSupabaseDebug('supabaseProxyHandler:start', {
-      method: eventInner.node.req.method,
-      url: eventInner.node.req.url,
-      host: eventInner.node.req.headers?.host,
-      forwardedProto: eventInner.node.req.headers?.['x-forwarded-proto']
-    })
+export const supabaseProxyHandler = async (eventInner: any) => {
+  const { readRawBody, setHeader, setResponseStatus } = await import('h3')
 
-    const method = eventInner.node.req.method ?? 'GET'
-    const { supabase, cookieAdapter } = await createSupabaseServerClient(eventInner)
-    const { supabaseUrl, supabaseAnonKey } = resolveSupabasePublicConfig()
+  const method = eventInner.node.req.method ?? 'GET'
+  const { supabase, cookieAdapter } = await createSupabaseServerClient(eventInner)
+  const { supabaseUrl, supabaseAnonKey } = resolveSupabasePublicConfig()
 
-    /* ---------------- AUTH CHECK ---------------- */
+  // AUTH CHECK (mevcut tasarımı koruyoruz)
+  let userData: any, userError: any, sessionData: any, sessionError: any
 
-    let userData: any, userError: any, sessionData: any, sessionError: any
+  try {
+    const [userResult, sessionResult] = await Promise.all([supabase.auth.getUser(), supabase.auth.getSession()])
+    userData = userResult.data
+    userError = userResult.error
+    sessionData = sessionResult.data
+    sessionError = sessionResult.error
+  } catch {
+    cookieAdapter.remove(PREMIUM_COOKIE_NAME, { path: '/' })
+    return respond(eventInner, cookieAdapter, 401, { error: 'Oturum geçersiz' })
+  }
 
-    try {
-      const [userResult, sessionResult] = await Promise.all([
-        supabase.auth.getUser(),
-        supabase.auth.getSession()
-      ])
-      userData = userResult.data
-      userError = userResult.error
-      sessionData = sessionResult.data
-      sessionError = sessionResult.error
-    } catch {
-      cookieAdapter.remove(PREMIUM_COOKIE_NAME, { path: '/' })
-      return respond(eventInner, cookieAdapter, 401, { error: 'Oturum geçersiz' })
-    }
+  const resolvedError = userError ?? sessionError
+  if (resolvedError || !userData?.user || !sessionData?.session) {
+    cookieAdapter.remove(PREMIUM_COOKIE_NAME, { path: '/' })
+    return respond(eventInner, cookieAdapter, 401, { error: resolvedError?.message ?? 'Oturum bulunamadı' })
+  }
 
-    const resolvedError = userError ?? sessionError
-    if (resolvedError || !userData?.user || !sessionData?.session) {
-      cookieAdapter.remove(PREMIUM_COOKIE_NAME, { path: '/' })
-      return respond(eventInner, cookieAdapter, 401, {
-        error: resolvedError?.message ?? 'Oturum bulunamadı'
-      })
-    }
+  // TARGET URL
+  const forwardedProto = (eventInner.node.req.headers['x-forwarded-proto'] as string) || 'http'
+  const host = eventInner.node.req.headers.host || 'localhost'
+  const url = new URL(eventInner.node.req.url || '/', `${forwardedProto}://${host}`)
 
-    /* ---------------- TARGET URL ---------------- */
+  const forwardedPath = url.pathname.replace(/^\/api\/supabase-proxy/, '') || '/'
+  const targetUrl = `${supabaseUrl}${forwardedPath}${url.search}`
 
-    const forwardedProto = (eventInner.node.req.headers['x-forwarded-proto'] as string) || 'http'
-    const host = eventInner.node.req.headers.host || 'localhost'
+  // HEADERS
+  const filteredHeaders: Record<string, string> = {}
+  for (const [key, value] of Object.entries(eventInner.node.req.headers)) {
+    if (!value) continue
+    if (FORBIDDEN_HEADERS.has(key.toLowerCase())) continue
+    filteredHeaders[key] = Array.isArray(value) ? value.join(',') : String(value)
+  }
 
-    const url = new URL(eventInner.node.req.url || '/', `${forwardedProto}://${host}`)
-    const forwardedPath = url.pathname.replace(/^\/api\/supabase-proxy/, '') || '/'
+  filteredHeaders.authorization = `Bearer ${sessionData.session.access_token}`
+  filteredHeaders.apikey = supabaseAnonKey as string
 
-    const targetUrl = `${supabaseUrl}${forwardedPath}${url.search}`
+  // BODY
+  const body =
+    ['GET', 'HEAD'].includes(method) || eventInner.node.req.headers['content-length'] === '0'
+      ? undefined
+      : await readRawBody(eventInner)
 
-    /* ---------------- HEADERS ---------------- */
+  // FETCH
+  const response = await fetch(targetUrl, { method, headers: filteredHeaders, body })
 
-    const filteredHeaders: Record<string, string> = {}
-    for (const [key, value] of Object.entries(eventInner.node.req.headers)) {
-      if (!value) continue
-      if (FORBIDDEN_HEADERS.has(key.toLowerCase())) continue
-      filteredHeaders[key] = Array.isArray(value) ? value.join(',') : String(value)
-    }
+  // RESPONSE
+  const contentType = response.headers.get('content-type') ?? 'application/octet-stream'
+  setResponseStatus(eventInner, response.status)
+  setHeader(eventInner, 'content-type', contentType)
 
-    filteredHeaders.authorization = `Bearer ${sessionData.session.access_token}`
-    filteredHeaders.apikey = supabaseAnonKey as string
+  cookieAdapter.apply()
 
-    /* ---------------- BODY ---------------- */
+  if (method === 'HEAD' || response.status === 204 || response.headers.get('content-length') === '0') {
+    return null
+  }
 
-    const body =
-      ['GET', 'HEAD'].includes(method) || eventInner.node.req.headers['content-length'] === '0'
-        ? undefined
-        : await readRawBody(eventInner)
+  if (contentType.includes('application/json')) {
+    const text = await response.text()
+    return text ? JSON.parse(text) : ''
+  }
 
-    /* ---------------- FETCH ---------------- */
+  return new Uint8Array(await response.arrayBuffer())
+}
 
-    const response = await fetch(targetUrl, { method, headers: filteredHeaders, body })
-
-    logSupabaseDebug('supabaseProxyHandler:response', {
-      method,
-      targetUrl,
-      status: response.status,
-      contentType: response.headers.get('content-type')
-    })
-
-    /* ---------------- RESPONSE ---------------- */
-
-    const contentType = response.headers.get('content-type') ?? 'application/octet-stream'
-
-    setResponseStatus(eventInner, response.status)
-    setHeader(eventInner, 'content-type', contentType)
-
-    cookieAdapter.apply()
-
-    // Edge + Node uyumlu response body
-    if (method === 'HEAD' || response.status === 204 || response.headers.get('content-length') === '0') {
-      return null
-    }
-
-    if (contentType.includes('application/json')) {
-      const text = await response.text()
-      return text ? JSON.parse(text) : ''
-    }
-
-    return new Uint8Array(await response.arrayBuffer())
-})
-
-const respond = (event: H3Event, cookieAdapter: { apply: () => void }, status: number, body: any) => {
+const respond = async (event: any, cookieAdapter: { apply: () => void }, status: number, body: any) => {
+  const { setHeader, setResponseStatus } = await import('h3')
   cookieAdapter.apply()
   setResponseStatus(event, status)
   setHeader(event, 'content-type', 'application/json')
