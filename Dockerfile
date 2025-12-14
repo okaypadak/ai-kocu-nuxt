@@ -13,6 +13,9 @@ RUN npm install
 
 COPY . .
 
+# Build alırken .env dosyasını okumasını sağlar.
+COPY .env .
+
 RUN npm run postinstall
 RUN npm run build
 

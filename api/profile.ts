@@ -74,7 +74,6 @@ async function pickAnyCurriculumId(): Promise<string | null> {
     const supabase = getSupabase()
     const { data, error } = await supabase.from('curricula').select('id').order('id', { ascending: true }).limit(1)
     if (error) {
-        console.warn('[profile] fallback curriculum lookup failed:', error.message)
         return null
     }
     return data?.[0]?.id ?? null

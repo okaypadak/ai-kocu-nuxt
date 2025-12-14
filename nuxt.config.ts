@@ -33,7 +33,6 @@ export default defineNuxtConfig({
       supabaseAnonKey:
         process.env.NUXT_PUBLIC_SUPABASE_ANON_KEY ||
         process.env.SUPABASE_ANON_KEY ||
-        process.env.SUPABASE_KEY ||
         '',
 
       // Proxy url public’da kalsın ki client da okuyabilsin
@@ -42,7 +41,7 @@ export default defineNuxtConfig({
         process.env.VITE_SUPABASE_PROXY_URL ||
         '/api/supabase-proxy',
 
-      youtubeApiKey: process.env.NUXT_PUBLIC_YOUTUBE_API_KEY || ''
+      youtubeApiKey: process.env.YOUTUBE_API_KEY || ''
     }
   },
 

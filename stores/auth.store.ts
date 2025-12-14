@@ -16,7 +16,6 @@ export const useAuthStore = defineStore('auth', () => {
       try {
          user.value = JSON.parse(JSON.stringify(newVal))
       } catch (e) {
-         console.error('Failed to sanitize user object', e)
          user.value = null
       }
     } else {
