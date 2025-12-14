@@ -1,16 +1,16 @@
 <!-- src/views/BildirimlerView.vue -->
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import Navbar from "../components/Navbar.vue";
+import Navbar from "../../components/Navbar.vue";
 import {
   useNotificationsList,
   useUnreadCount,
   useMarkAsRead,
   useMarkAllAsRead,
   useNotificationsRealtime,
-} from "../queries/useNotifications";
+} from "../../queries/useNotifications";
 import { useRouter } from "vue-router";
-import { useAuthStore } from "../stores/auth.store";
+import { useAuthStore } from "../../stores/auth.store";
 
 const router = useRouter();
 const auth = useAuthStore();

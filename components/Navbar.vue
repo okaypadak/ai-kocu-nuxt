@@ -88,7 +88,7 @@ const iconMap = Object.freeze({
 } satisfies Record<NavIconKey, string>)
 
 const NAV_ITEMS: Readonly<NavItem[]> = Object.freeze([
-  { label: 'Profil', path: '/profile', icon: 'profile' },
+  { label: 'Profil', path: '/profil', icon: 'profile' },
   { label: 'Ders Programı', path: '/ders-programi', icon: 'schedule' },
   { label: 'Zamanlayıcı', path: '/zamanlayici', icon: 'timer' },
   { label: 'Net Artır', path: '/net-artir', icon: 'exam' },
@@ -99,8 +99,8 @@ const NAV_ITEMS: Readonly<NavItem[]> = Object.freeze([
   // Admin-only
   { label: 'Müfredat Yönetimi', path: '/mufredat-yonetimi', icon: 'curriculum', adminOnly: true },
   { label: 'Müfredat İçeriği', path: '/mufredat-iceri', icon: 'curriculum', adminOnly: true },
-  { label: 'YouTube', path: '/youtube-iceri', icon: 'youtube', adminOnly: true },
-  { label: 'Destek Admin', path: '/destek-admin', icon: 'chat', adminOnly: true },
+  { label: 'YouTube', path: '/youtube-oynatma-listeleri', icon: 'youtube', adminOnly: true },
+  { label: 'Destek Admin', path: '/admin-destek-mesajlari', icon: 'chat', adminOnly: true },
 ])
 
 const regularNavItems = computed(() => NAV_ITEMS.filter((item) => !item.adminOnly))

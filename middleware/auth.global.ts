@@ -14,11 +14,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
     '/', 
     '/login', 
     '/sifremi-unuttum', 
-    '/verify-email', 
-    '/guncelle-sifre', 
-    '/UpdatePasswordView',
-    '/PaymentSuccessView', 
-    '/PaymentFailureView'
+    '/eposta-dogrula', 
+    '/sifre-guncelle', 
+    '/odeme-basarili', 
+    '/odeme-basarisiz'
   ]
   
   // Hash fragment ile gelen bazı recovery linkleri path'i etkileyebilir, 
@@ -30,7 +29,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
     // Kullanıcı giriş yapmışsa
     // Login sayfasına gitmek isterse profile yönlendir
     if (to.path === '/login' || to.path === '/') {
-        return navigateTo('/profile')
+        return navigateTo('/profil')
     }
     // Diğer sayfalara izin ver
   } else {

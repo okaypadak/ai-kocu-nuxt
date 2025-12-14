@@ -40,48 +40,48 @@ const suRole = ref<Role>('student') // Öğrenci varsayılan
 const loading = ref(false)
 const error = ref<string | null>(null)
 
-async function onLogin() {
-  loading.value = true
-  error.value = null
-  try {
-    await auth.login(email.value.trim(), password.value)
-    router.push({ name: 'profile' })
-  } catch (e: any) {
-    if (e?.code === 'auth/needs-email-verification') {
-      router.push({ name: 'verify-email', query: { redirect: '/profile' } })
-      return
+  async function onLogin() {
+    loading.value = true
+    error.value = null
+    try {
+      await auth.login(email.value.trim(), password.value)
+      router.push({ path: '/profil' })
+    } catch (e: any) {
+      if (e?.code === 'auth/needs-email-verification') {
+        router.push({ path: '/eposta-dogrula', query: { redirect: '/profil' } })
+        return
+      }
+      error.value = e?.message ?? 'Giriş başarısız.'
+    } finally {
+      loading.value = false
     }
-    error.value = e?.message ?? 'Giriş başarısız.'
-  } finally {
-    loading.value = false
   }
-}
-
-async function onSignup() {
-  loading.value = true
-  error.value = null
-  try {
-    if (suPassword.value !== suPasswordConfirm.value) {
-      error.value = 'Sifreler eslesmiyor.'
-      return
+  
+  async function onSignup() {
+    loading.value = true
+    error.value = null
+    try {
+      if (suPassword.value !== suPasswordConfirm.value) {
+        error.value = 'Sifreler eslesmiyor.'
+        return
+      }
+      await auth.signup(
+        suEmail.value.trim(),
+        suPassword.value,
+        (suFullName.value || '').trim() || null,
+        suRole.value
+      )
+      if (auth.needsEmailVerification) {
+        router.push({ path: '/eposta-dogrula', query: { redirect: '/profil' } })
+      } else {
+        router.push({ path: '/profil' })
+      }
+    } catch (e: any) {
+      error.value = e?.message ?? 'Kayıt başarısız.'
+    } finally {
+      loading.value = false
     }
-    await auth.signup(
-      suEmail.value.trim(),
-      suPassword.value,
-      (suFullName.value || '').trim() || null,
-      suRole.value
-    )
-    if (auth.needsEmailVerification) {
-      router.push({ name: 'verify-email', query: { redirect: '/profile' } })
-    } else {
-      router.push({ name: 'profile' })
-    }
-  } catch (e: any) {
-    error.value = e?.message ?? 'Kayıt başarısız.'
-  } finally {
-    loading.value = false
   }
-}
 </script>
 
 <template>

@@ -2,12 +2,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import Navbar from "../components/Navbar.vue";
+import Navbar from "../../components/Navbar.vue";
 import {
   useNotificationById,
   useMarkRead,
   useDeleteNotification,
-} from "../queries/useNotifications";
+} from "../../queries/useNotifications";
 
 const route = useRoute();
 const router = useRouter();
