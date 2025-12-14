@@ -14,7 +14,7 @@ import { useAuthStore } from "../../stores/auth.store";
 
 const router = useRouter();
 const auth = useAuthStore();
-const userId = computed(() => auth.user?.id);
+const userId = auth.userId;
 
 // filtre / sayfalama
 const onlyUnread = ref(false);

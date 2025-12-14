@@ -176,7 +176,9 @@ export function useNotificationsList(userId: MaybeRef<string | undefined>, opts?
       }
   )
 
-  return { data, isLoading: pending, error, refetch: refresh }
+  const isError = computed(() => Boolean(error.value))
+
+  return { data, isLoading: pending, isError, error, refetch: refresh }
 }
 
 export function useUnreadCount(userId: MaybeRef<string | undefined>) {
@@ -260,19 +262,36 @@ export const useNotificationTrigger = () => useState('notificationTrigger', () =
 
 export function useMarkAsRead() {
   const trigger = useNotificationTrigger()
+  const isPending = ref(false)
 
   async function mutateAsync(id: UUID) {
-      await markAsRead(id)
-      trigger.value++ // Signal list refresh?
-      // Also need to refresh unread count for current user?
-      // We don't have userID here easily unless passed.
-      // But component calling this likely knows.
+      if (isPending.value) return
+      isPending.value = true
+      try {
+        await markAsRead(id)
+        trigger.value++ // Signal list refresh?
+        // Also need to refresh unread count for current user?
+        // We don't have userID here easily unless passed.
+        // But component calling this likely knows.
+      } finally {
+        isPending.value = false
+      }
   }
 
   return {
     mutateAsync,
-    mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
-    isLoading: ref(false)
+    mutate: (p: any, opts?: any) =>
+      mutateAsync(p)
+        .then((res) => {
+          opts?.onSuccess?.(res)
+          return res
+        })
+        .catch((err) => {
+          opts?.onError?.(err)
+          throw err
+        }),
+    isLoading: isPending,
+    isPending,
   }
 }
 
@@ -283,35 +302,69 @@ export function useMarkRead() {
 
 export function useMarkAllAsRead(userId: MaybeRef<string | undefined>) {
   const trigger = useNotificationTrigger()
+  const isPending = ref(false)
   
   async function mutateAsync() {
+      if (isPending.value) return
       const uid = unref(userId)
       if (!uid) throw new Error('Missing user id for markAllAsRead')
-      await markAllAsRead(uid)
-      
-      trigger.value++
-      refreshNuxtData(qk.notifications.unreadCount(uid))
+      isPending.value = true
+      try {
+        await markAllAsRead(uid)
+        
+        trigger.value++
+        refreshNuxtData(qk.notifications.unreadCount(uid))
+      } finally {
+        isPending.value = false
+      }
   }
 
   return {
     mutateAsync,
-    mutate: (p: any, opts?: any) => mutateAsync().then(opts?.onSuccess).catch(opts?.onError),
-    isLoading: ref(false)
+    mutate: (p?: any, opts?: any) =>
+      mutateAsync()
+        .then((res) => {
+          opts?.onSuccess?.(res)
+          return res
+        })
+        .catch((err) => {
+          opts?.onError?.(err)
+          throw err
+        }),
+    isLoading: isPending,
+    isPending,
   }
 }
 
 export function useDeleteNotification() {
   const trigger = useNotificationTrigger()
+  const isPending = ref(false)
 
   async function mutateAsync(id: UUID) {
-      await removeOne(id)
-      trigger.value++
+      if (isPending.value) return
+      isPending.value = true
+      try {
+        await removeOne(id)
+        trigger.value++
+      } finally {
+        isPending.value = false
+      }
   }
 
   return {
     mutateAsync,
-    mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
-    isLoading: ref(false)
+    mutate: (p: any, opts?: any) =>
+      mutateAsync(p)
+        .then((res) => {
+          opts?.onSuccess?.(res)
+          return res
+        })
+        .catch((err) => {
+          opts?.onError?.(err)
+          throw err
+        }),
+    isLoading: isPending,
+    isPending,
   }
 }
 
