@@ -80,6 +80,26 @@ const normalizeTask = (row: any): StudyTask => {
     }
 }
 
+const transformDaily = (rows: any[]): Record<DayKey, { total: number; completed: number }> => {
+    const out: Record<DayKey, { total: number; completed: number }> = {
+        monday: { total: 0, completed: 0 },
+        tuesday: { total: 0, completed: 0 },
+        wednesday: { total: 0, completed: 0 },
+        thursday: { total: 0, completed: 0 },
+        friday: { total: 0, completed: 0 },
+        saturday: { total: 0, completed: 0 },
+        sunday: { total: 0, completed: 0 },
+    }
+    for (const r of rows) {
+        const d = r.day as DayKey
+        if (out[d]) {
+            out[d].total = Number(r.total ?? 0)
+            out[d].completed = Number(r.completed ?? 0)
+        }
+    }
+    return out
+}
+
 export const StudyPlansAPI = {
     /** plan + tasks + daily istatistiklerini tek seferde getir */
     async getPlan(userId: string, weekStart: string): Promise<StudyPlanDTO> {
