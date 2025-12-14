@@ -16,9 +16,14 @@ export function useStudyPlan(
     const ws  = toVal(weekStart)
 
     return useQuery<StudyPlanDTO>({
-        enabled: () => !!uid.value && !!ws.value,
+        enabled: () => {
+            const isEnabled = !!uid.value && !!ws.value
+            if (!isEnabled) console.log('[useStudyPlan] Query DISABLED. uid:', uid.value, 'ws:', ws.value)
+            return isEnabled
+        },
         queryKey: computed(() => qk.studyPlan.byWeek(uid.value ?? '', ws.value ?? '')),
         queryFn: () => {
+            console.log('[useStudyPlan] Fetching plan for:', uid.value, ws.value)
             return StudyPlansAPI.getPlan(uid.value!, ws.value!)
         },
         placeholderData: (prev) => prev

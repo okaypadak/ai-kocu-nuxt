@@ -19,7 +19,7 @@ const norm = (v?: string | null) => (typeof v === 'string' ? v.trim() : v ?? '')
 
 /* Auth & Queries */
 const auth = useAuthStore()
-const uid = auth.user?.id ?? null
+const uid = computed(() => auth.userId)
 
 // Profil (isLoading çıkarıldı)
 const {

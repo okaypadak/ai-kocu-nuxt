@@ -18,7 +18,7 @@ export function useProfile(userId?: string | Ref<string | null> | null) {
     const uidRef = computed<string | null>(() => {
         const p = userId
         const passed = isRef(p) ? unref(p) : p
-        return passed ?? auth.user?.id ?? null
+        return passed ?? auth.userId ?? null
     })
 
     // ---- Query: profili getir ----
@@ -68,7 +68,7 @@ export function useProfile(userId?: string | Ref<string | null> | null) {
         },
         onSuccess: (data) => {
             qc.setQueryData(['profile', uidRef.value], data)
-            if (uidRef.value && uidRef.value === auth.user?.id) {
+            if (uidRef.value && uidRef.value === auth.userId) {
                 auth.$patch({ preferredCurriculumId: data.preferred_curriculum_id ?? null })
             }
         }

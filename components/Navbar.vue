@@ -126,7 +126,7 @@ const adminDropdownRef = ref<HTMLElement | null>(null)
 const menuReady = computed(() => true)
 
 // 🔔 Unread count + realtime
-const uid = computed(() => user.value?.id ?? auth.user?.id ?? undefined)
+const uid = computed(() => auth.userId ?? undefined)
 const { data: unreadCount } = useUnreadCount(uid)
 useNotificationsRealtime(uid) // realtime invalidate
 

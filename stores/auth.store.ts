@@ -21,7 +21,12 @@ export const useAuthStore = defineStore('auth', () => {
         premiumEndsAt: string | null
         preferredCurriculumId: string | null
       }>('/api/auth', { credentials: 'include' })
-      user.value = data?.user ?? null
+      if (data?.user) {
+         user.value = data.user
+      } else if (!user.value) {
+         user.value = null
+      }
+
       premiumEndsAt.value = data?.premiumEndsAt ?? null
       preferredCurriculumId.value = data?.preferredCurriculumId ?? null
     } catch (err) {
@@ -83,13 +88,34 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+
+  const isPremiumActive = computed(() => {
+    if (!premiumEndsAt.value) return false
+    const end = new Date(premiumEndsAt.value)
+    return !isNaN(end.getTime()) && end.getTime() > Date.now()
+  })
+
+  // Helper to get ID regardless of whether user is a User object or JWT payload
+  const userId = computed(() => {
+     if (!user.value) return null
+     return user.value.id || (user.value as any).sub || null
+  })
+
+  const isAdmin = computed(() => {
+    const u = user.value as any
+    return u?.user_metadata?.role === 'admin' || u?.app_metadata?.role === 'admin'
+  })
+
   return {
     user,
+    userId,
+    isAdmin,
     loading,
     needsEmailVerification,
     premiumEndsAt,
     preferredCurriculumId,
     initialized,
+    isPremiumActive,
     fetchSession,
     login,
     signup,

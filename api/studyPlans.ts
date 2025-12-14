@@ -84,11 +84,16 @@ export const StudyPlansAPI = {
     /** plan + tasks + daily istatistiklerini tek seferde getir */
     async getPlan(userId: string, weekStart: string): Promise<StudyPlanDTO> {
         try {
+            console.log('[StudyPlansAPI] getPlan call', { userId, weekStart })
             const planRes = await withTimeout(
                 supabase.from('study_plans').select('*').eq('user_id', userId).eq('week_start', weekStart).maybeSingle()
             ) as any
-            if (planRes.error) throw planRes.error
+            if (planRes.error) {
+                console.error('[StudyPlansAPI] plan fetch error', planRes.error)
+                throw planRes.error
+            }
             const plan: StudyPlan | null = planRes.data ?? null
+            console.log('[StudyPlansAPI] found plan', plan)
 
             let tasks: StudyTask[] = []
             let dailyRows: DailyRow[] = []
@@ -102,18 +107,11 @@ export const StudyPlansAPI = {
                 tasks = (tRes.data ?? []).map(normalizeTask)
                 dailyRows = (dRes.data ?? []) as any
             }
-
-            const daily: StudyPlanDTO['daily'] = {
-                monday:{total:0,completed:0}, tuesday:{total:0,completed:0}, wednesday:{total:0,completed:0},
-                thursday:{total:0,completed:0}, friday:{total:0,completed:0}, saturday:{total:0,completed:0},
-                sunday:{total:0,completed:0}
-            }
-            for (const r of dailyRows) {
-                const k = r.day as DayKey
-                if (daily[k]) daily[k] = { total: Number(r.total||0), completed: Number(r.completed||0) }
-            }
-            return { plan, tasks, daily }
-        } catch (e) { throw normErr(e) }
+            return { plan, tasks, daily: transformDaily(dailyRows) }
+        } catch (e) {
+             console.error('[StudyPlansAPI] getPlan exception', e)
+             throw normErr(e) 
+        }
     },
 
     /** upsert: plan + tasks + daily (append=true keeps existing, otherwise prunes extras) */

@@ -38,9 +38,9 @@ const weekRangeLabel = computed(() => {
 })
 
 /* === Plan & Durations === */
-const { data: planDTO, isPending } = useStudyPlan(() => auth.user?.id, weekStart)
-const upsertMut = useUpsertStudyPlan(() => auth.user?.id, weekStart)
-const { data: topicDurations } = useTopicDurationsForWeek(() => auth.user?.id, weekStart)
+const { data: planDTO, isPending } = useStudyPlan(() => auth.userId, weekStart)
+const upsertMut = useUpsertStudyPlan(() => auth.userId, weekStart)
+const { data: topicDurations } = useTopicDurationsForWeek(() => auth.userId, weekStart)
 const queryClient = useQueryClient()
 
 const toast = useToast()
@@ -244,7 +244,7 @@ const youtubePlayerElId = 'studyplan-youtube-player'
 let youtubeApiPromise: Promise<any> | null = null
 let youtubeTickHandle: number | null = null
 let youtubePlayStartedAt: number | null = null
-const createFromYoutube = useCreateStudySessionFromTimer(() => auth.user?.id)
+const createFromYoutube = useCreateStudySessionFromTimer(() => auth.userId)
 const updateYoutubeSession = useUpdateStudySession()
 
 const youtubeLikeUrl = computed(() => {
@@ -302,7 +302,7 @@ function ensureYoutubeApi(): Promise<any> {
 }
 
 async function openYoutubeModal(task: StudyTask) {
-  if (!auth.user?.id) {
+  if (!auth.userId) {
     toast.error('YouTube modülünü kullanmak için giriş yapın.')
     return
   }
@@ -518,7 +518,7 @@ function changeWeek(offset:number){
   weekStart.value = formatDate(getStartOfWeekTurkey(shifted))
 }
 
-watch([() => auth.user?.id, weekStart], ([uid, start]) => {
+watch([() => auth.userId, weekStart], ([uid, start]) => {
   if (!uid || !start) return
   prefetchNeighborWeeks(uid, start)
 }, { immediate: true })
