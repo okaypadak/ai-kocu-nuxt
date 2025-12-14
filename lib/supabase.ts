@@ -1,29 +1,37 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Helper to safely access env vars in both Node (SSR) and Client (Vite)
-const getEnv = (key: string, viteKey: string) => {
-    // Priority 1: process.env (Node/SSR) - often most reliable for secrets/config in server context
-    if (typeof process !== 'undefined' && process.env) {
-        if (process.env[key]) return process.env[key]
-        if (process.env[viteKey]) return process.env[viteKey]
-    }
-    // Priority 2: import.meta.env (Vite Client)
-    if (import.meta.env) {
-        if (import.meta.env[key]) return import.meta.env[key]
-        if (import.meta.env[viteKey]) return import.meta.env[viteKey]
+const getEnv = (...keys: string[]) => {
+    for (const key of keys) {
+        if (typeof process !== 'undefined' && process.env?.[key]) return process.env[key] as string
+        if (typeof import.meta !== 'undefined' && (import.meta as any).env?.[key]) return (import.meta as any).env[key] as string
     }
     return ''
 }
 
-const supabaseUrl = (typeof process !== 'undefined' && process.env?.NUXT_PUBLIC_SUPABASE_URL) || 
-                      import.meta.env?.NUXT_PUBLIC_SUPABASE_URL || 
-                      import.meta.env?.VITE_SUPABASE_URL || ''
-const supabaseAnonKey = (typeof process !== 'undefined' && process.env?.NUXT_PUBLIC_SUPABASE_ANON_KEY) || 
-                        import.meta.env?.NUXT_PUBLIC_SUPABASE_ANON_KEY || 
-                        import.meta.env?.VITE_SUPABASE_ANON_KEY || ''
+const supabaseUrl = getEnv(
+    'NUXT_PUBLIC_SUPABASE_URL',
+    'SUPABASE_URL',
+    'NUXT_SUPABASE_URL',
+    'VITE_SUPABASE_URL'
+)
 
-if (!supabaseUrl) console.error('FATAL: supabaseUrl is missing. Check .env and nuxt.config.ts')
-const proxyUrl = (import.meta.env.VITE_SUPABASE_PROXY_URL ?? '/api/supabase-proxy').trim()
+const supabaseAnonKey = getEnv(
+    'NUXT_PUBLIC_SUPABASE_ANON_KEY',
+    'SUPABASE_ANON_KEY',
+    'SUPABASE_KEY',
+    'NUXT_SUPABASE_KEY',
+    'VITE_SUPABASE_ANON_KEY'
+)
+
+if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Supabase config missing: set NUXT_PUBLIC_SUPABASE_URL/SUPABASE_URL and NUXT_PUBLIC_SUPABASE_ANON_KEY/SUPABASE_ANON_KEY')
+}
+
+const proxyUrl = (
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_PROXY_URL) ??
+    process.env?.VITE_SUPABASE_PROXY_URL ??
+    '/api/supabase-proxy'
+).trim()
 
 const shouldProxy = proxyUrl.length > 0
 

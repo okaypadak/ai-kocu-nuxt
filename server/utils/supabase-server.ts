@@ -6,20 +6,52 @@ import type { H3Event } from 'h3'
 import { parseCookies } from 'h3'
 import { useRuntimeConfig } from '#imports'
 
+const env = (...keys: string[]) => keys.map((k) => process.env[k]).find(Boolean)
+
 /* ------------------------------------------------------------------ */
 /* RUNTIME CONFIG                                                      */
 /* ------------------------------------------------------------------ */
 
+export const resolveSupabasePublicConfig = () => {
+  const config = useRuntimeConfig()
+  const supabaseUrl =
+    config.public.supabaseUrl ||
+    env(
+      'NUXT_PUBLIC_SUPABASE_URL',
+      'SUPABASE_URL',
+      'NUXT_SUPABASE_URL',
+      'VITE_SUPABASE_URL'
+    )
+
+  const supabaseAnonKey =
+    config.public.supabaseAnonKey ||
+    env(
+      'NUXT_PUBLIC_SUPABASE_ANON_KEY',
+      'SUPABASE_ANON_KEY',
+      'SUPABASE_KEY',
+      'NUXT_SUPABASE_KEY',
+      'VITE_SUPABASE_ANON_KEY'
+    )
+
+  return { supabaseUrl, supabaseAnonKey }
+}
+
 const getConfig = () => {
   const config = useRuntimeConfig()
+  const { supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY } =
+    resolveSupabasePublicConfig()
 
-  const SUPABASE_URL = config.public.supabaseUrl
-  const SUPABASE_ANON_KEY = config.public.supabaseAnonKey
-  const SUPABASE_SERVICE_ROLE_KEY = config.supabaseServiceRoleKey
-  const PREMIUM_COOKIE_SECRET = config.premiumCookieSecret
+  const SUPABASE_SERVICE_ROLE_KEY =
+    config.supabaseServiceRoleKey ||
+    env('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY')
+
+  const PREMIUM_COOKIE_SECRET =
+    config.premiumCookieSecret || env('PREMIUM_COOKIE_SECRET')
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    throw new Error('Supabase public config eksik')
+    throw new Error(
+      'Supabase public config eksik (NUXT_PUBLIC_SUPABASE_URL/SUPABASE_URL ve NUXT_PUBLIC_SUPABASE_ANON_KEY/SUPABASE_ANON_KEY)'
+    )
   }
 
   if (!PREMIUM_COOKIE_SECRET) {

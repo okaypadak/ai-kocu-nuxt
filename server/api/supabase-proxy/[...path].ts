@@ -5,15 +5,14 @@ import {
   setResponseStatus,
   type H3Event
 } from 'h3'
-import { createSupabaseServerClient, PREMIUM_COOKIE_NAME } from '~/server/utils/supabase-server'
-import { useRuntimeConfig } from '#imports'
+import { createSupabaseServerClient, PREMIUM_COOKIE_NAME, resolveSupabasePublicConfig } from '~/server/utils/supabase-server'
 
 const FORBIDDEN_HEADERS = new Set(['host', 'connection', 'content-length'])
 
 export default defineEventHandler(async (event) => {
   const method = event.node.req.method ?? 'GET'
   const { supabase, cookieAdapter } = createSupabaseServerClient(event)
-  const config = useRuntimeConfig()
+  const { supabaseUrl, supabaseAnonKey } = resolveSupabasePublicConfig()
 
   /* ------------------------------------------------------------ */
   /* AUTH CHECK                                                   */
@@ -55,7 +54,6 @@ export default defineEventHandler(async (event) => {
   const forwardedPath =
     url.pathname.replace(/^\/api\/supabase-proxy/, '') || '/'
 
-  const supabaseUrl = config.public.supabaseUrl
   const targetUrl = `${supabaseUrl}${forwardedPath}${url.search}`
 
   /* ------------------------------------------------------------ */
@@ -71,7 +69,7 @@ export default defineEventHandler(async (event) => {
   }
 
   filteredHeaders.authorization = `Bearer ${sessionData.session.access_token}`
-  filteredHeaders.apikey = config.public.supabaseAnonKey
+  filteredHeaders.apikey = supabaseAnonKey
 
   /* ------------------------------------------------------------ */
   /* BODY                                                         */

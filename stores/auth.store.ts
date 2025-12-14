@@ -12,7 +12,13 @@ export const useAuthStore = defineStore('auth', () => {
   // Sync supabaseUser to user state (sanitized)
   watch(supabaseUser, (newVal) => {
     if (newVal) {
-      user.value = JSON.parse(JSON.stringify(newVal))
+      // Ensure it is a valid object before sanitizing
+      try {
+         user.value = JSON.parse(JSON.stringify(newVal))
+      } catch (e) {
+         console.error('Failed to sanitize user object', e)
+         user.value = null
+      }
     } else {
       user.value = null
     }

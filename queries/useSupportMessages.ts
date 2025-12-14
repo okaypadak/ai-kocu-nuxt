@@ -1,7 +1,6 @@
 // src/queries/useSupportMessages.ts
 import { computed, onMounted, onUnmounted, unref, watch, ref } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import { supabase } from '../lib/supabase'
 import type { NotificationRow as BaseNotificationRow } from './useNotifications'
 
 type MaybeRef<T> = T | Ref<T> | ComputedRef<T>
@@ -34,8 +33,8 @@ const conversationKeysForId = (conversationId?: string | null) => {
   return keys
 }
 
-async function fetchSupportMessages(participantId: string, conversationId?: string | null): Promise<SupportMessage[]> {
-  let q = supabase
+async function fetchSupportMessages(client: any, participantId: string, conversationId?: string | null): Promise<SupportMessage[]> {
+  let q = client
     .from('notifications')
     .select('*')
     .eq('type', SUPPORT_TYPE)
@@ -53,8 +52,8 @@ async function fetchSupportMessages(participantId: string, conversationId?: stri
   return (data ?? []) as SupportMessage[]
 }
 
-async function fetchAllSupportMessages(participantId: string): Promise<SupportMessage[]> {
-  const { data, error } = await supabase
+async function fetchAllSupportMessages(client: any, participantId: string): Promise<SupportMessage[]> {
+  const { data, error } = await client
     .from('notifications')
     .select('*')
     .eq('type', SUPPORT_TYPE)
@@ -65,8 +64,8 @@ async function fetchAllSupportMessages(participantId: string): Promise<SupportMe
   return (data ?? []) as SupportMessage[]
 }
 
-async function fetchSupportInbox(limit: number): Promise<SupportMessage[]> {
-  const { data, error } = await supabase
+async function fetchSupportInbox(client: any, limit: number): Promise<SupportMessage[]> {
+  const { data, error } = await client
     .from('notifications')
     .select('*')
     .eq('type', SUPPORT_TYPE)
@@ -88,7 +87,7 @@ type InsertPayload = {
   status?: string
 }
 
-async function insertSupportMessage(payload: InsertPayload) {
+async function insertSupportMessage(client: any, payload: InsertPayload) {
   const baseData = {
     user_id: payload.receiverId,
     sender_id: payload.senderId,
@@ -104,7 +103,7 @@ async function insertSupportMessage(payload: InsertPayload) {
     seen_at: null,
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('notifications')
     .insert(baseData)
     .select('*')
@@ -114,8 +113,8 @@ async function insertSupportMessage(payload: InsertPayload) {
   return data as SupportMessage
 }
 
-async function updateConversationStatus(conversationId: string, status: string) {
-  const { data, error } = await supabase
+async function updateConversationStatus(client: any, conversationId: string, status: string) {
+  const { data, error } = await client
     .from('notifications')
     .update({ status })
     .eq('conversation_id', conversationId)
@@ -127,6 +126,7 @@ export function useSupportMessages(
   userId: MaybeRef<string | null | undefined>,
   conversationId?: MaybeRef<string | null | undefined>
 ) {
+  const client = useSupabaseClient()
   const resolvedUserId = computed(() => unref(userId))
   const conversationArgProvided = conversationId !== undefined
   const resolvedConversationId = computed(() =>
@@ -149,9 +149,9 @@ export function useSupportMessages(
       () => {
           if (!resolvedUserId.value) throw new Error('Missing participant id')
           if (conversationArgProvided) {
-            return fetchSupportMessages(resolvedUserId.value, resolvedConversationId.value ?? null)
+            return fetchSupportMessages(client, resolvedUserId.value, resolvedConversationId.value ?? null)
           }
-          return fetchAllSupportMessages(resolvedUserId.value)
+          return fetchAllSupportMessages(client, resolvedUserId.value)
       },
       {
           watch: [resolvedUserId, resolvedConversationId, conversationQueryKey],
@@ -167,9 +167,10 @@ export function useSupportMessages(
 }
 
 export function useSupportInbox(limit: number = DEFAULT_INBOX_LIMIT) {
+  const client = useSupabaseClient()
   const { data, pending, error, refresh } = useAsyncData<SupportMessage[]>(
       supportQk.inbox(limit),
-      () => fetchSupportInbox(limit),
+      () => fetchSupportInbox(client, limit),
       {
           // refetchInterval equivalent? useInterval in @vueuse or manual setInterval calling refresh()
           // Nuxt doesn't have refetchInterval built-in useAsyncData.
@@ -190,6 +191,7 @@ export function useSupportInbox(limit: number = DEFAULT_INBOX_LIMIT) {
 }
 
 export function useInsertSupportMessage() {
+  const client = useSupabaseClient()
   const isLoading = ref(false)
   const isError = ref(false)
   const error = ref<any>(null)
@@ -200,7 +202,7 @@ export function useInsertSupportMessage() {
       error.value = null
       
       try {
-        const res = await insertSupportMessage(payload)
+        const res = await insertSupportMessage(client, payload)
         
         // Invalidate queries
         // Root equivalent? Try to refresh known common inbox
@@ -237,14 +239,15 @@ export function useInsertSupportMessage() {
 }
 
 export function useSetConversationStatus() {
+  const client = useSupabaseClient()
   async function mutateAsync(payload: { conversationId: string; status: string }) {
-      const data = await updateConversationStatus(payload.conversationId, payload.status)
+      const data = await updateConversationStatus(client, payload.conversationId, payload.status)
       
       refreshNuxtData(supportQk.inbox(DEFAULT_INBOX_LIMIT))
       
       const keys = conversationKeysForId(payload.conversationId)
       const participants = new Set<string>()
-      data?.forEach((row) => {
+      data?.forEach((row: any) => {
         if (row.user_id) participants.add(row.user_id)
         if (row.sender_id) participants.add(row.sender_id)
       })
@@ -264,14 +267,15 @@ export function useSetConversationStatus() {
 }
 
 export function useSupportRealtime(userId: MaybeRef<string | null | undefined>) {
+  const client = useSupabaseClient()
   const resolvedUserId = computed(() => unref(userId))
 
-  let channel: ReturnType<typeof supabase.channel> | null = null
+  let channel: any = null
 
   const cleanup = () => {
     if (!channel) return
     try {
-      supabase.removeChannel(channel)
+      client.removeChannel(channel)
     } catch {
       /* noop */
     }
@@ -283,7 +287,7 @@ export function useSupportRealtime(userId: MaybeRef<string | null | undefined>) 
     (uid) => {
       cleanup()
       if (!uid) return
-      channel = supabase
+      channel = client
         .channel(`support-${uid}`)
         .on(
           'postgres_changes',
@@ -311,10 +315,11 @@ export function useSupportRealtime(userId: MaybeRef<string | null | undefined>) 
 }
 
 export function useSupportInboxRealtime(limit: number = DEFAULT_INBOX_LIMIT) {
-  let channel: ReturnType<typeof supabase.channel> | null = null
+  const client = useSupabaseClient()
+  let channel: any = null
 
   onMounted(() => {
-    channel = supabase
+    channel = client
       .channel(`support-inbox-${limit}`)
       .on(
         'postgres_changes',
@@ -329,7 +334,7 @@ export function useSupportInboxRealtime(limit: number = DEFAULT_INBOX_LIMIT) {
   onUnmounted(() => {
     if (!channel) return
     try {
-      supabase.removeChannel(channel)
+      client.removeChannel(channel)
     } catch {
       /* noop */
     }
