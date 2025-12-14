@@ -1,8 +1,10 @@
 export default defineNuxtRouteMiddleware(async (to) => {
   const auth = useAuthStore()
 
-  // 1. Oturum kontrolü (ilk yüklemede)
-  if (!auth.initialized) {
+  // 1. Oturum kontrolü
+  // SSR'da fetchSession çalıştırmak Pinia hydration hatasına (obj.hasOwnProperty) sebep oluyor.
+  // Bu yüzden sadece client tarafında çalıştırıyoruz.
+  if (import.meta.client && !auth.initialized) {
     try {
       await auth.fetchSession()
     } catch {

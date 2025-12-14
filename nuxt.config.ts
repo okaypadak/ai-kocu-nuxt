@@ -10,6 +10,7 @@ export default defineNuxtConfig({
     '@nuxt/scripts',
     '@nuxt/ui',
     '@unocss/nuxt',
+    'pinia-plugin-persistedstate/nuxt',
     '@pinia/nuxt'
   ],
   css: ['~/assets/main.css', '~/style.css', 'vue-toastification/dist/index.css'],

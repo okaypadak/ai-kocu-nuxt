@@ -4,7 +4,20 @@ import { AuthGateway } from '../api/authGateway'
 export type Role = 'student' | 'coach' | 'admin'
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = useSupabaseUser()
+  // Internal supabase user ref (do not return this to avoid Pinia hydration issues with null-prototype objects)
+  const supabaseUser = useSupabaseUser()
+  // Start with null to prevent useSupabaseUser's value from corrupting state before sanitization
+  const user = ref<any>(null)
+
+  // Sync supabaseUser to user state (sanitized)
+  watch(supabaseUser, (newVal) => {
+    if (newVal) {
+      user.value = JSON.parse(JSON.stringify(newVal))
+    } else {
+      user.value = null
+    }
+  }, { immediate: true })
+
   const loading = ref(false)
   const needsEmailVerification = ref(false)
   const premiumEndsAt = ref<string | null>(null)
@@ -22,7 +35,8 @@ export const useAuthStore = defineStore('auth', () => {
         preferredCurriculumId: string | null
       }>('/api/auth', { credentials: 'include' })
       if (data?.user) {
-         user.value = data.user
+         // Sanitize user object to ensure it has Object prototype (fixes Pinia hydration crash)
+         user.value = JSON.parse(JSON.stringify(data.user))
       } else if (!user.value) {
          user.value = null
       }
@@ -43,7 +57,7 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     try {
       const result = await AuthGateway.login(email, password)
-      user.value = result.user
+      user.value = result.user ? JSON.parse(JSON.stringify(result.user)) : null
       premiumEndsAt.value = result.premiumEndsAt ?? null
       preferredCurriculumId.value = result.preferredCurriculumId ?? null
     } finally {
@@ -62,7 +76,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (result.user && !result.session) {
         needsEmailVerification.value = true
       }
-      user.value = result.user
+      user.value = result.user ? JSON.parse(JSON.stringify(result.user)) : null
       premiumEndsAt.value = result.premiumEndsAt ?? null
       preferredCurriculumId.value = result.preferredCurriculumId ?? null
     } finally {
