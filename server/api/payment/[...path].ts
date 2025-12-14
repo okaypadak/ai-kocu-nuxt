@@ -1,10 +1,11 @@
 import Iyzipay from 'iyzipay'
 import { defineEventHandler, readBody, readRawBody, sendRedirect, setHeader, setResponseStatus } from 'h3'
+import { serverSupabaseClient } from '#supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import {
-  createSupabaseServerClient,
-  createSupabaseAdminClient,
-  persistPremiumCookie
-} from '~/server/utils/supabase'
+  persistPremiumCookie,
+  createCookieAdapter
+} from '~/server/utils/premium'
 import { PACKAGES } from '~/api/premium'
 
 const iyzipay = new Iyzipay({
@@ -13,14 +14,25 @@ const iyzipay = new Iyzipay({
   uri: process.env.IYZICO_URI || 'https://sandbox-api.iyzipay.com'
 })
 
+// Helper to create Admin Client (Service Role)
+const createSupabaseAdminClient = () => {
+    const url = process.env.SUPABASE_URL || process.env.NUXT_PUBLIC_SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!url || !key) return null
+    return createClient(url, key, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    })
+}
+
 export default defineEventHandler(async (event) => {
   const method = event.node.req.method ?? 'GET'
   const rawParam = event.context.params?.path ?? ''
   const pathname = rawParam ? `/${rawParam}` : '/'
-  const { supabase, cookieAdapter } = await createSupabaseServerClient(event)
+  
+  const supabase = await serverSupabaseClient(event)
+  const cookieAdapter = createCookieAdapter(event)
 
   const send = (status: number, body: any) => {
-    cookieAdapter.apply()
     setResponseStatus(event, status)
     return body
   }

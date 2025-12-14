@@ -1,6 +1,5 @@
 // src/queries/useBadges.ts
 import { onMounted, onUnmounted, ref, type Ref, computed, unref } from 'vue'
-import { supabase } from '../lib/supabase'
 import {
     fetchBadges, fetchUserBadges, awardBadge, revokeBadge,
     sortLevels, type Badge, type UserBadge, type BadgeLevel
@@ -14,11 +13,11 @@ export const qk = {
 
 /** Katalog */
 export function useBadgesCatalog() {
+    const client = useSupabaseClient()
     return useAsyncData<Badge[]>(
         qk.badges,
-        fetchBadges,
+        () => fetchBadges(client),
         {
-            placeholderData: (prev) => prev
             // staleTime handled by default
         }
     )
@@ -28,17 +27,17 @@ export function useBadgesCatalog() {
 
 /** Kullanıcı kazançları */
 export function useUserBadges(userId?: string) {
+    const client = useSupabaseClient()
     const key = computed(() => qk.userBadges(userId ?? ''))
     
     const { data, pending, error, refresh } = useAsyncData<UserBadge[]>(
         key.value,
         () => {
             if (!userId) return Promise.resolve([])
-            return fetchUserBadges(userId)
+            return fetchUserBadges(client, userId)
         },
         {
             watch: [() => userId],
-            placeholderData: (prev) => prev
         }
     )
     return { data, isLoading: pending, error, refetch: refresh }
@@ -46,9 +45,10 @@ export function useUserBadges(userId?: string) {
 
 /** Ver / Geri al */
 export function useAwardBadge(userId?: string) {
+    const client = useSupabaseClient()
     async function mutateAsync(p: { code: string; level: BadgeLevel }) {
         if (!userId) throw new Error('Missing user id')
-        const res = await awardBadge(userId, p.code, p.level)
+        const res = await awardBadge(client, userId, p.code, p.level)
         refreshNuxtData(qk.userBadges(userId))
         return res
     }
@@ -61,9 +61,10 @@ export function useAwardBadge(userId?: string) {
 }
 
 export function useRevokeBadge(userId?: string) {
+    const client = useSupabaseClient()
     async function mutateAsync(p: { code: string; level: BadgeLevel }) {
         if (!userId) throw new Error('Missing user id')
-        const res = await revokeBadge(userId, p.code, p.level)
+        const res = await revokeBadge(client, userId, p.code, p.level)
         refreshNuxtData(qk.userBadges(userId))
         return res
     }
@@ -77,13 +78,14 @@ export function useRevokeBadge(userId?: string) {
 
 /** Realtime: user_badges (INSERT/DELETE/UPDATE) */
 export function useRealtimeUserBadges(userId?: string) {
+    const client = useSupabaseClient()
     const status: Ref<'idle' | 'subscribed' | 'error'> = ref('idle')
-    let channel: ReturnType<typeof supabase.channel> | null = null
+    let channel: ReturnType<typeof client.channel> | null = null
 
     onMounted(() => {
         if (!userId) return
         try {
-            channel = supabase
+            channel = client
                 .channel(`rb_${userId}`)
                 .on(
                     'postgres_changes',
@@ -98,7 +100,7 @@ export function useRealtimeUserBadges(userId?: string) {
     })
 
     onUnmounted(() => {
-        if (channel) { supabase.removeChannel(channel); channel = null }
+        if (channel) { client.removeChannel(channel); channel = null }
         status.value = 'idle'
     })
 

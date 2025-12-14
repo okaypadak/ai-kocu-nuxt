@@ -1,4 +1,5 @@
-import { supabase } from '../lib/supabase'
+// src/api/statistics.ts
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type TimeRange = { from: string; to: string }
 
@@ -14,8 +15,8 @@ export type StudySessionRow = {
 
 export const StatisticsAPI = {
     /** Günlük çalışma verileri (aralığa göre) */
-    async fetchStudySessions(userId: string, range: TimeRange) {
-        const { data, error } = await supabase
+    async fetchStudySessions(client: SupabaseClient, userId: string, range: TimeRange) {
+        const { data, error } = await client
             .from('study_sessions')
             .select('id,user_id,date,duration_minutes,curriculum_id,lesson_id,lesson_name')
             .eq('user_id', userId)
@@ -28,8 +29,8 @@ export const StatisticsAPI = {
     },
 
     /** Ders ilerlemesi (her konu ≥10dk ise tamamlandı) - RPC */
-    async fetchLessonProgress(userId: string) {
-        const { data, error } = await supabase.rpc('fn_get_lesson_progress', {
+    async fetchLessonProgress(client: SupabaseClient, userId: string) {
+        const { data, error } = await client.rpc('fn_get_lesson_progress', {
             p_user_id: userId
         })
         if (error) throw error

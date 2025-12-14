@@ -13,6 +13,7 @@ export function useStudyPlan(
     userId: MaybeReactive<string | undefined>,
     weekStart: MaybeReactive<string | undefined>
 ) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const ws  = toVal(weekStart)
     const trigger = useStudyPlanTrigger()
@@ -24,17 +25,12 @@ export function useStudyPlan(
         () => {
              const isEnabled = !!uid.value && !!ws.value
              if (!isEnabled) {
-                 // Return empty/null structure? 
-                 // Previous placeholderData: (prev) => prev
                  return Promise.resolve(null as any)
              }
-             return StudyPlansAPI.getPlan(uid.value!, ws.value!)
+             return StudyPlansAPI.getPlan(client, uid.value!, ws.value!)
         },
         {
             watch: [trigger],
-            // placeholderData: (prev) => prev (Nuxt default is null, unless lazy/transform)
-            // If we want to keep previous data while fetching, use 'lazy: true'?
-            // But useAsyncData pending is distinct.
         }
     )
 
@@ -45,18 +41,14 @@ export function useUpsertStudyPlan(
     userId: MaybeReactive<string | undefined>,
     weekStart: MaybeReactive<string | undefined>
 ) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const ws  = toVal(weekStart)
     const trigger = useStudyPlanTrigger()
     
     async function mutateAsync(p: { tasks: StudyTask[]; daily: StudyPlanDTO['daily'] }) {
-        const res = await StudyPlansAPI.upsertPlan(uid.value!, ws.value!, p.tasks, p.daily)
+        const res = await StudyPlansAPI.upsertPlan(client, uid.value!, ws.value!, p.tasks, p.daily)
         trigger.value++
-        // Also invalidate topic seconds?
-        // They share the same trigger if we want? Or explicit refresh?
-        // The topicSeconds query below also typically needs refresh.
-        // We can force it by same trigger if we want.
-        // But topicSeconds query will use useAsyncData dependency logic.
         return res
     }
 
@@ -71,6 +63,7 @@ export function useTopicDurationsForWeek(
     userId: MaybeReactive<string | undefined>,
     weekStart: MaybeReactive<string | undefined>
 ) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const ws  = toVal(weekStart)
     const trigger = useStudyPlanTrigger() // Reuse same trigger for simplicity
@@ -81,11 +74,10 @@ export function useTopicDurationsForWeek(
         key.value,
         () => {
              if (!uid.value || !ws.value) return Promise.resolve({})
-             return StudyPlansAPI.topicDurationsForWeek(uid.value!, ws.value!)
+             return StudyPlansAPI.topicDurationsForWeek(client, uid.value!, ws.value!)
         },
         {
             watch: [trigger],
-            // staleTime equivalent?
         }
     )
 

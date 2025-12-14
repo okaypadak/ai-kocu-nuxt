@@ -1,5 +1,5 @@
 // src/api/profile.ts
-import { resolveSupabaseClient } from '../utils/supabase-client'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type Role = 'student' | 'teacher' | 'admin'
 
@@ -68,11 +68,8 @@ const PROFILE_FIELDS =
     'ai_mode,ai_creativity,ai_inspiration,ai_reward_mode,ai_character,' +
     'ai_daily_plan_enabled,ai_weekly_report_enabled,ai_belgesel_mode,ai_prediction_enabled,premium_ends_at'
 
-const getSupabase = () => resolveSupabaseClient()
-
-async function pickAnyCurriculumId(): Promise<string | null> {
-    const supabase = getSupabase()
-    const { data, error } = await supabase.from('curricula').select('id').order('id', { ascending: true }).limit(1)
+async function pickAnyCurriculumId(client: SupabaseClient): Promise<string | null> {
+    const { data, error } = await client.from('curricula').select('id').order('id', { ascending: true }).limit(1)
     if (error) {
         return null
     }
@@ -81,9 +78,8 @@ async function pickAnyCurriculumId(): Promise<string | null> {
 
 export const ProfileAPI = {
     /** Tek satır bekler; yoksa null döner. `.maybeSingle()` + `.limit(1)` */
-    async fetchByUserId(uid: string): Promise<Profile | null> {
-        const supabase = getSupabase()
-        const { data, error } = await supabase
+    async fetchByUserId(client: SupabaseClient, uid: string): Promise<Profile | null> {
+        const { data, error } = await client
             .from('profiles')
             .select(PROFILE_FIELDS)
             .eq('user_id', uid)
@@ -97,14 +93,14 @@ export const ProfileAPI = {
 
     /** Yoksa olustur (idempotent). preferred_curriculum_id zorunlu oldugu icin ilk mevcut kaydi veya verilen IDyi kullanir. */
     async createIfMissing(
+        client: SupabaseClient,
         uid: string,
         email: string | null,
         role: Role = 'student',
         fullname: string | null = null,
         preferredCurriculumId?: string | null
     ): Promise<Profile> {
-        const supabase = getSupabase()
-        const { data: existing, error: existingError } = await supabase
+        const { data: existing, error: existingError } = await client
             .from('profiles')
             .select(PROFILE_FIELDS)
             .eq('user_id', uid)
@@ -118,13 +114,13 @@ export const ProfileAPI = {
 
         const preferred =
             normalizePreferredCurriculumId(preferredCurriculumId) ??
-            normalizePreferredCurriculumId(await pickAnyCurriculumId())
+            normalizePreferredCurriculumId(await pickAnyCurriculumId(client))
 
         if (!preferred) {
             throw new Error('preferred_curriculum_id bulunamadi; profil olusturulamadi.')
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await client
             .from('profiles')
             .upsert(
                 { user_id: uid, email, role, fullname, preferred_curriculum_id: preferred },
@@ -142,41 +138,43 @@ export const ProfileAPI = {
 
     /** Get or create shortcut (isteğe bağlı) */
     async getOrCreateByUserId(
+        client: SupabaseClient,
         uid: string,
         seed?: { email?: string | null; role?: Role; fullname?: string | null; preferredCurriculumId?: string | null }
     ): Promise<Profile> {
-        const existing = await this.fetchByUserId(uid)
+        const existing = await this.fetchByUserId(client, uid)
         if (existing) return existing
         await this.createIfMissing(
+            client,
             uid,
             seed?.email ?? null,
             seed?.role ?? 'student',
             seed?.fullname ?? null,
             seed?.preferredCurriculumId ?? null
         )
-        const created = await this.fetchByUserId(uid)
+        const created = await this.fetchByUserId(client, uid)
         if (!created) throw new Error('Profile create failed (RLS/policies?)')
         return created
     },
 
     /** Temel alanları güncelle (fullname, role). */
     async updateBasics(
+        client: SupabaseClient,
         uid: string,
         payload: { fullname?: string | null; role?: Role }
     ): Promise<Profile> {
-        const supabase = getSupabase()
         const hasAny =
             Object.prototype.hasOwnProperty.call(payload, 'fullname') ||
             Object.prototype.hasOwnProperty.call(payload, 'role')
 
         if (!hasAny) {
             // no-op: alan yoksa mevcut kaydı döndür
-            const prof = await this.fetchByUserId(uid)
+            const prof = await this.fetchByUserId(client, uid)
             if (!prof) throw new Error('Profile not found')
             return prof
         }
 
-        const { data, error } = await supabase
+        const { data, error } = await client
             .from('profiles')
             .update({
                 // undefined gönderilirse PostgREST alanı dokunmaz
@@ -194,12 +192,11 @@ export const ProfileAPI = {
         return toProfileWithNormalizedPref(data)!
     },
     /** Mufredat tercih guncelle */
-    async updatePreferred(uid: string, cid: string): Promise<Profile> {
+    async updatePreferred(client: SupabaseClient, uid: string, cid: string): Promise<Profile> {
         const target = normalizePreferredCurriculumId(cid)
         if (!target) throw new Error('Gecersiz mufredat ID (UUID bekleniyor).')
 
-        const supabase = getSupabase()
-        const { data, error } = await supabase
+        const { data, error } = await client
             .from('profiles')
             .update({ preferred_curriculum_id: target })
             .eq('user_id', uid)
@@ -217,13 +214,13 @@ export const ProfileAPI = {
 
     /** Fatura / musteri bilgilerini guncelle (Sadece TCKN kaldı) */
     async updateCustomerInfo(
+        client: SupabaseClient,
         uid: string,
         payload: {
             customer_tax_number?: string | null
         }
     ): Promise<Profile> {
-        const supabase = getSupabase()
-        const { data, error } = await supabase
+        const { data, error } = await client
             .from('profiles')
             .update({
                 customer_tax_number: payload.customer_tax_number ?? undefined
@@ -241,6 +238,7 @@ export const ProfileAPI = {
 
     /** Yapay zeka tercihlerini güncelle */
     async updateAi(
+        client: SupabaseClient,
         uid: string,
         payload: {
             ai_mode?: AiMode | null
@@ -253,8 +251,7 @@ export const ProfileAPI = {
             ai_prediction_enabled?: boolean | null
         }
     ): Promise<Profile> {
-        const supabase = getSupabase()
-        const { data, error } = await supabase
+        const { data, error } = await client
             .from('profiles')
             .update({
                 ai_mode: payload.ai_mode ?? undefined,

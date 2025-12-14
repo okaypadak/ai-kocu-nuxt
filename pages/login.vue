@@ -19,23 +19,18 @@ watch(() => route.hash, (newHash) => {
   if (newHash === '#uyeol') {
     tab.value = 'signup'
   } else if (!newHash) {
-    // Opsiyonel: hash silinirse login'e dönmek istenir mi? 
-    // Genelde kullanıcı manuel tıkladıysa değiştirmemek daha iyi olabilir ama
-    // talep sadece "uyeol linki girildiğinde açacak" yönünde.
-    // Şimdilik sadece #uyeol varsa signup yapalım.
+
   }
 })
 
-// Login formu
 const email = ref('')
 const password = ref('')
 
-// Signup formu (tek alan: Ad Soyad - opsiyonel)
 const suEmail = ref('')
 const suPassword = ref('')
 const suPasswordConfirm = ref('')
 const suFullName = ref('')
-const suRole = ref<Role>('student') // Öğrenci varsayılan
+const suRole = ref<Role>('student')
 
 const loading = ref(false)
 const error = ref<string | null>(null)
@@ -135,7 +130,6 @@ const error = ref<string | null>(null)
 
           <div v-if="error" class="text-red-600 text-sm">{{ error }}</div>
 
-          <!-- LOGIN -->
           <form v-if="tab==='login'" class="space-y-4" @submit.prevent="onLogin">
             <div>
               <label class="text-sm text-slate-700">E-posta</label>
@@ -168,7 +162,6 @@ const error = ref<string | null>(null)
             </button>
           </form>
 
-          <!-- SIGNUP -->
           <form v-else class="space-y-4" @submit.prevent="onSignup">
             <div>
               <label class="text-sm text-slate-700">Ad Soyad (opsiyonel)</label>

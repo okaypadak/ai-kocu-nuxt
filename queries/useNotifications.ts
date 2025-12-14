@@ -1,7 +1,7 @@
 // src/queries/useNotifications.ts
 import { computed, onUnmounted, watch, unref, ref, onMounted } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import { supabase } from '../lib/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 type UUID = string
 
@@ -58,7 +58,7 @@ function shouldHideFromNotifications(row: NotificationRow) {
 }
 
 /* ================= Fetchers ================= */
-async function fetchList(params: {
+async function fetchList(client: SupabaseClient, params: {
   userId: string
   limit?: number
   onlyUnread?: boolean
@@ -76,7 +76,7 @@ async function fetchList(params: {
     searchBody = '',
     onlyAi = false,
   } = params
-  let q = supabase
+  let q = client
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
@@ -100,8 +100,8 @@ async function fetchList(params: {
   return { items, nextCursor }
 }
 
-async function fetchUnreadCount(userId: string): Promise<number> {
-  const { count, error } = await supabase
+async function fetchUnreadCount(client: SupabaseClient, userId: string): Promise<number> {
+  const { count, error } = await client
     .from('notifications')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
@@ -110,8 +110,8 @@ async function fetchUnreadCount(userId: string): Promise<number> {
   return count ?? 0
 }
 
-async function fetchById(id: string): Promise<NotificationRow | null> {
-  const { data, error } = await supabase
+async function fetchById(client: SupabaseClient, id: string): Promise<NotificationRow | null> {
+  const { data, error } = await client
     .from('notifications')
     .select('*')
     .eq('id', id)
@@ -133,6 +133,7 @@ type ListOpts = {
 type MaybeRef<T> = T | Ref<T> | ComputedRef<T>
 
 export function useNotificationsList(userId: MaybeRef<string | undefined>, opts?: MaybeRef<ListOpts>) {
+  const client = useSupabaseClient()
   const resolvedUserId = computed(() => unref(userId))
   const resolvedOpts = computed(() => unref(opts) ?? {})
 
@@ -160,7 +161,7 @@ export function useNotificationsList(userId: MaybeRef<string | undefined>, opts?
       () => {
           const uid = resolvedUserId.value
           if (!uid) throw new Error('Missing user id for notification list')
-          return fetchList({
+          return fetchList(client, {
             userId: uid,
             limit: limit.value,
             onlyUnread: onlyUnread.value,
@@ -182,6 +183,7 @@ export function useNotificationsList(userId: MaybeRef<string | undefined>, opts?
 }
 
 export function useUnreadCount(userId: MaybeRef<string | undefined>) {
+  const client = useSupabaseClient()
   const resolvedUserId = computed(() => unref(userId))
   const key = computed(() => qk.notifications.unreadCount(resolvedUserId.value ?? ''))
 
@@ -189,7 +191,7 @@ export function useUnreadCount(userId: MaybeRef<string | undefined>) {
       key.value,
       () => {
           if (!resolvedUserId.value) return Promise.resolve(0)
-          return fetchUnreadCount(resolvedUserId.value)
+          return fetchUnreadCount(client, resolvedUserId.value)
       },
       {
           watch: [resolvedUserId],
@@ -201,6 +203,7 @@ export function useUnreadCount(userId: MaybeRef<string | undefined>) {
 }
 
 export function useNotificationById(id: MaybeRef<string | undefined>) {
+  const client = useSupabaseClient()
   const resolvedId = computed(() => unref(id))
   const key = computed(() => qk.notifications.byId(resolvedId.value ?? ''))
 
@@ -208,7 +211,7 @@ export function useNotificationById(id: MaybeRef<string | undefined>) {
       key.value,
       () => {
           if (!resolvedId.value) return Promise.resolve(null)
-          return fetchById(resolvedId.value)
+          return fetchById(client, resolvedId.value)
       },
       {
           watch: [resolvedId],
@@ -220,16 +223,16 @@ export function useNotificationById(id: MaybeRef<string | undefined>) {
 }
 
 /* ================= Mutations ================= */
-async function markAsRead(id: UUID) {
-  const { error } = await supabase
+async function markAsRead(client: SupabaseClient, id: UUID) {
+  const { error } = await client
     .from('notifications')
     .update({ read_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
 }
 
-async function markAllAsRead(userId: string) {
-  const { error } = await supabase
+async function markAllAsRead(client: SupabaseClient, userId: string) {
+  const { error } = await client
     .from('notifications')
     .update({ read_at: new Date().toISOString() })
     .eq('user_id', userId)
@@ -237,8 +240,8 @@ async function markAllAsRead(userId: string) {
   if (error) throw error
 }
 
-async function removeOne(id: UUID) {
-  const { error } = await supabase.from('notifications').delete().eq('id', id)
+async function removeOne(client: SupabaseClient, id: UUID) {
+  const { error } = await client.from('notifications').delete().eq('id', id)
   if (error) throw error
 }
 
@@ -246,13 +249,6 @@ async function removeOne(id: UUID) {
 function invalidateNotifications(uid?: string) {
     if (uid) {
         refreshNuxtData(qk.notifications.unreadCount(uid))
-        // Cannot easily invalidate lists because of variable params (limit, filter, etc.)
-        // But if we stick to a convention or refresh via a global trigger for lists...
-        // For now, let's refresh unread count as it is most critical.
-        // And maybe refresh current page usage via logic in the component layer?
-        // Or broad refresh?
-        // Note: useNotificationsList uses specific keys.
-        // We lack "invalidateQueries(['notifications'])" behavior.
     }
 }
 
@@ -261,6 +257,7 @@ function invalidateNotifications(uid?: string) {
 export const useNotificationTrigger = () => useState('notificationTrigger', () => 0)
 
 export function useMarkAsRead() {
+  const client = useSupabaseClient()
   const trigger = useNotificationTrigger()
   const isPending = ref(false)
 
@@ -268,11 +265,8 @@ export function useMarkAsRead() {
       if (isPending.value) return
       isPending.value = true
       try {
-        await markAsRead(id)
+        await markAsRead(client, id)
         trigger.value++ // Signal list refresh?
-        // Also need to refresh unread count for current user?
-        // We don't have userID here easily unless passed.
-        // But component calling this likely knows.
       } finally {
         isPending.value = false
       }
@@ -301,6 +295,7 @@ export function useMarkRead() {
 }
 
 export function useMarkAllAsRead(userId: MaybeRef<string | undefined>) {
+  const client = useSupabaseClient()
   const trigger = useNotificationTrigger()
   const isPending = ref(false)
   
@@ -310,7 +305,7 @@ export function useMarkAllAsRead(userId: MaybeRef<string | undefined>) {
       if (!uid) throw new Error('Missing user id for markAllAsRead')
       isPending.value = true
       try {
-        await markAllAsRead(uid)
+        await markAllAsRead(client, uid)
         
         trigger.value++
         refreshNuxtData(qk.notifications.unreadCount(uid))
@@ -337,6 +332,7 @@ export function useMarkAllAsRead(userId: MaybeRef<string | undefined>) {
 }
 
 export function useDeleteNotification() {
+  const client = useSupabaseClient()
   const trigger = useNotificationTrigger()
   const isPending = ref(false)
 
@@ -344,7 +340,7 @@ export function useDeleteNotification() {
       if (isPending.value) return
       isPending.value = true
       try {
-        await removeOne(id)
+        await removeOne(client, id)
         trigger.value++
       } finally {
         isPending.value = false
@@ -373,10 +369,11 @@ export function useNotificationsRealtime(
   userId: MaybeRef<string | undefined>,
   opts?: { onEvent?: (evt: 'INSERT' | 'UPDATE' | 'DELETE', row: any) => void }
 ) {
+  const client = useSupabaseClient()
   const resolvedUserId = computed(() => unref(userId))
   const trigger = useNotificationTrigger()
 
-  let channel: ReturnType<typeof supabase.channel> | null = null
+  let channel: ReturnType<typeof client.channel> | null = null
   let fallbackTimer: any = null
   const startFallback = () => {
     if (fallbackTimer) return
@@ -393,7 +390,7 @@ export function useNotificationsRealtime(
   const cleanup = () => {
     if (!channel) return
     try {
-      supabase.removeChannel(channel)
+      client.removeChannel(channel)
     } catch {
       /* noop */
     } finally {
@@ -406,7 +403,7 @@ export function useNotificationsRealtime(
     (uid) => {
       cleanup()
       if (!uid) return
-      channel = supabase
+      channel = client
         .channel(`notifs-${uid}`)
         .on(
           'postgres_changes',

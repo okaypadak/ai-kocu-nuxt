@@ -1,4 +1,5 @@
-import { supabase } from '../lib/supabase'
+// src/api/studySessions.ts
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 /** ==== Types ==== */
 export type StudySession = {
@@ -53,10 +54,10 @@ export function todayISO(): string {
 
 /** ==== API ==== */
 export const StudySessionsAPI = {
-    async fetchById(id: string): Promise<StudySession | null> {
+    async fetchById(client: SupabaseClient, id: string): Promise<StudySession | null> {
         try {
             const { data, error } = await timeout(
-                supabase.from('study_sessions').select('*').eq('id', id).single()
+                client.from('study_sessions').select('*').eq('id', id).single()
             )
             if (error) throw error
             return (data ?? null) as StudySession | null
@@ -64,6 +65,7 @@ export const StudySessionsAPI = {
     },
 
     async listByRange(
+        client: SupabaseClient,
         userId: string,
         range: DateRange,
         opts?: { limit?: number; order?: 'asc' | 'desc' }
@@ -72,7 +74,7 @@ export const StudySessionsAPI = {
             const limit = opts?.limit ?? 500
             const asc = (opts?.order ?? 'desc') === 'asc'
             const { data, error } = await timeout(
-                supabase.from('study_sessions')
+                client.from('study_sessions')
                     .select('*')
                     .eq('user_id', userId)
                     .gte('date', range.from)
@@ -87,6 +89,7 @@ export const StudySessionsAPI = {
     },
 
     async listByDate(
+        client: SupabaseClient,
         userId: string,
         dateISO: string,
         opts?: { limit?: number; order?: 'asc' | 'desc' }
@@ -95,7 +98,7 @@ export const StudySessionsAPI = {
             const limit = opts?.limit ?? 500
             const asc = (opts?.order ?? 'desc') === 'asc'
             const { data, error } = await timeout(
-                supabase.from('study_sessions')
+                client.from('study_sessions')
                     .select('*')
                     .eq('user_id', userId)
                     .eq('date', dateISO)
@@ -107,10 +110,10 @@ export const StudySessionsAPI = {
         } catch (e:any) { throw toErr(e) }
     },
 
-    async listRecent(userId: string, limit = 20): Promise<StudySession[]> {
+    async listRecent(client: SupabaseClient, userId: string, limit = 20): Promise<StudySession[]> {
         try {
             const { data, error } = await timeout(
-                supabase.from('study_sessions')
+                client.from('study_sessions')
                     .select('*')
                     .eq('user_id', userId)
                     .order('date', { ascending: false })
@@ -123,7 +126,7 @@ export const StudySessionsAPI = {
     },
 
     /** ✅ Insert */
-    async create(userId: string, payload: SessionCreate): Promise<StudySession> {
+    async create(client: SupabaseClient, userId: string, payload: SessionCreate): Promise<StudySession> {
         try {
             if (!userId) throw new SessionError('Oturum açmanız gerekiyor.', 'NO_AUTH')
             const row = {
@@ -140,7 +143,7 @@ export const StudySessionsAPI = {
                 lesson_name: payload.lesson_name ?? null,
             }
             const { data, error } = await timeout(
-                supabase.from('study_sessions').insert(row).select('*').single()
+                client.from('study_sessions').insert(row).select('*').single()
             )
             if (error) throw error
             return data as StudySession
@@ -148,7 +151,7 @@ export const StudySessionsAPI = {
     },
 
     /** ✅ Timer’dan saniye -> dakika */
-    async createFromTimer(userId: string, p: {
+    async createFromTimer(client: SupabaseClient, userId: string, p: {
         duration_seconds: number
         date?: string
         note?: string | null
@@ -165,11 +168,11 @@ export const StudySessionsAPI = {
             const date = p.date ?? todayISO()
             const { duration_seconds, ...rest } = p
             const clean: SessionCreate = { ...rest, date, duration_minutes: minutes }
-            return await this.create(userId, clean)
+            return await this.create(client, userId, clean)
         } catch (e:any) { throw toErr(e) }
     },
 
-    async update(id: string, patch: SessionUpdate): Promise<StudySession> {
+    async update(client: SupabaseClient, id: string, patch: SessionUpdate): Promise<StudySession> {
         try {
             const safePatch: SessionUpdate = {
                 date: patch.date,
@@ -183,35 +186,36 @@ export const StudySessionsAPI = {
                 lesson_name: patch.lesson_name ?? null,
             }
             const { data, error } = await timeout(
-                supabase.from('study_sessions').update(safePatch).eq('id', id).select('*').single()
+                client.from('study_sessions').update(safePatch).eq('id', id).select('*').single()
             )
             if (error) throw error
             return data as StudySession
         } catch (e:any) { throw toErr(e) }
     },
 
-    async remove(id: string): Promise<void> {
+    async remove(client: SupabaseClient, id: string): Promise<void> {
         const { error } = await timeout(
-            supabase.from('study_sessions').delete().eq('id', id)
+            client.from('study_sessions').delete().eq('id', id)
         )
         if (error) throw toErr(error)
     },
 
-    async deleteByTopicId(topicUuid: string): Promise<void> {
+    async deleteByTopicId(client: SupabaseClient, topicUuid: string): Promise<void> {
         const { error } = await timeout(
-            supabase.from('study_sessions').delete().eq('topic_uuid', topicUuid)
+            client.from('study_sessions').delete().eq('topic_uuid', topicUuid)
         )
         if (error) throw toErr(error)
     },
 
     /** Eski: toplam/daily (dakika) */
     async statsByRange(
+        client: SupabaseClient,
         userId: string,
         range: DateRange
     ): Promise<{ totalMinutes: number; daily: Array<{ date: string; minutes: number }> }> {
         try {
             const { data, error } = await timeout(
-                supabase.from('study_sessions')
+                client.from('study_sessions')
                     .select('date, duration_minutes')
                     .eq('user_id', userId)
                     .gte('date', range.from)
@@ -235,12 +239,13 @@ export const StudySessionsAPI = {
 
     /** ✅ Günlük özet: her gün için toplam dakika + seans adedi (grafik için) */
     async dailySummaryByRange(
+        client: SupabaseClient,
         userId: string,
         range: DateRange
     ): Promise<Array<{ date: string; totalMinutes: number; count: number }>> {
         try {
             const { data, error } = await timeout(
-                supabase.from('study_sessions')
+                client.from('study_sessions')
                     .select('date, duration_minutes')
                     .eq('user_id', userId)
                     .gte('date', range.from)
@@ -265,13 +270,14 @@ export const StudySessionsAPI = {
 
     /** En çok çalışılan konular (dakika toplamı) */
     async topTopics(
+        client: SupabaseClient,
         userId: string,
         range: DateRange,
         limit = 10
     ): Promise<Array<{ topic_uuid: string; topic_title: string | null; minutes: number }>> {
         try {
             const { data, error } = await timeout(
-                supabase.from('study_sessions')
+                client.from('study_sessions')
                     .select('topic_uuid, topic_id, topic_title, duration_minutes')
                     .eq('user_id', userId)
                     .gte('date', range.from)
@@ -294,13 +300,13 @@ export const StudySessionsAPI = {
     },
 
     /** Haftalık topic toplam süreleri (saniye; UI için) */
-    async totalsByTopicForWeekSeconds(userId: string, weekStart: string): Promise<Record<string, number>> {
+    async totalsByTopicForWeekSeconds(client: SupabaseClient, userId: string, weekStart: string): Promise<Record<string, number>> {
         const start = new Date(weekStart)
         const end = new Date(start); end.setDate(end.getDate()+6)
         const to = `${end.getFullYear()}-${String(end.getMonth()+1).padStart(2,'0')}-${String(end.getDate()).padStart(2,'0')}`
 
         const { data, error } = await timeout(
-            supabase.from('study_sessions')
+            client.from('study_sessions')
                 .select('topic_uuid, topic_id, duration_minutes')
                 .eq('user_id', userId)
                 .gte('date', weekStart)
@@ -318,12 +324,4 @@ export const StudySessionsAPI = {
         }
         return out
     }
-}
-
-/** Geriye uyumluluk */
-export async function totalsByTopicForWeek(
-    userId: string,
-    weekStart: string
-): Promise<Record<string, number>> {
-    return StudySessionsAPI.totalsByTopicForWeekSeconds(userId, weekStart)
 }

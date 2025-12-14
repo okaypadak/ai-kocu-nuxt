@@ -12,6 +12,7 @@ import { qk } from '../queries/keys'
 import { useCreateStudySessionFromTimer, useUpdateStudySession } from '../queries/useStudySessions'
 import { secondsToMinutesRounded, todayISO } from '../api/studySessions'
 import { CurriculumAPI, type Lesson } from '../api/curriculum'
+import { useAsyncData, useSupabaseClient, refreshNuxtData } from '#imports'
 
 type DayKey = 'monday'|'tuesday'|'wednesday'|'thursday'|'friday'|'saturday'|'sunday'
 const days: { key: DayKey; label: string }[] = [
@@ -82,6 +83,10 @@ function toggleTask(_day: DayKey, id: string, completed: boolean) {
   const next = tasksAll().map(t => t.id === id ? { ...t, completed } : t)
   persistPlan(next, completed ? 'Harika! Ders tamamlandı.' : 'Ders güncellendi')
 }
+function onToggleTask(day: DayKey, id: string, event: Event) {
+  const target = event.target as HTMLInputElement
+  toggleTask(day, id, target.checked)
+}
 function tasksAll(): StudyTask[] { return (planDTO.value?.tasks ?? []) }
 function persistPlan(nextTasks: StudyTask[], successMsg?: string) {
   if (!ensurePremiumPlan()) return
@@ -124,14 +129,14 @@ const { data: lessonMap } = useAsyncData<Record<number, Lesson>>(
   computed(() => ['curriculumLessonsById', lessonIds.value.join(',')].join(':')),
   async () => {
     if (!lessonIds.value.length) return {}
-    const lessons = await CurriculumAPI.fetchLessonsByIds(lessonIds.value)
+    const client = useSupabaseClient()
+    const lessons = await CurriculumAPI.fetchLessonsByIds(client, lessonIds.value)
     const map: Record<number, Lesson> = {}
     for (const l of lessons) map[l.id] = l
     return map
   },
   {
-    watch: [lessonIds],
-    placeholderData: (prev) => prev
+    watch: [lessonIds]
   }
 )
 
@@ -825,7 +830,7 @@ onBeforeUnmount(() => {
                         >
                           <div class="flex items-start justify-between gap-3">
                             <label class="flex items-start gap-2 flex-1">
-                              <input type="checkbox" :checked="t.completed" @change="toggleTask(d.key, t.id, ($event.target as HTMLInputElement).checked)" :disabled="!isPremiumActive" />
+                              <input type="checkbox" :checked="t.completed" @change="onToggleTask(d.key, t.id, $event)" :disabled="!isPremiumActive" />
                               <div class="space-y-0.5">
                                 <div class="font-medium text-slate-800" :class="t.completed ? 'line-through' : ''">{{ t.title }}</div>
                                 <div

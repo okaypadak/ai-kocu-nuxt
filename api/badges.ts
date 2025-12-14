@@ -1,5 +1,5 @@
 // src/api/badges.ts
-import { supabase } from '../lib/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type BadgeLevel = string // public.badge_level enum; ör: 'bronze'|'silver'|'gold'|...
 export type Badge = {
@@ -27,18 +27,18 @@ const timeout = <T>(p: PromiseLike<T>, ms = 10000) => Promise.race<T>([
 ])
 
 /** Katalog (tüm rozetler) */
-export async function fetchBadges(): Promise<Badge[]> {
+export async function fetchBadges(client: SupabaseClient): Promise<Badge[]> {
     const { data, error } = await timeout(
-        supabase.from('badges').select('*').order('code', { ascending: true })
+        client.from('badges').select('*').order('code', { ascending: true })
     )
     if (error) throw toErr(error)
     return (data ?? []) as Badge[]
 }
 
 /** Kullanıcının kazandıkları */
-export async function fetchUserBadges(userId: string): Promise<UserBadge[]> {
+export async function fetchUserBadges(client: SupabaseClient, userId: string): Promise<UserBadge[]> {
     const { data, error } = await timeout(
-        supabase.from('user_badges')
+        client.from('user_badges')
             .select('*')
             .eq('user_id', userId)
             .order('earned_at', { ascending: false })
@@ -48,29 +48,29 @@ export async function fetchUserBadges(userId: string): Promise<UserBadge[]> {
 }
 
 /** Admin: rozet tanımı ekle/güncelle */
-export async function upsertBadge(b: Omit<Badge, 'created_at' | 'updated_at'>): Promise<Badge> {
+export async function upsertBadge(client: SupabaseClient, b: Omit<Badge, 'created_at' | 'updated_at'>): Promise<Badge> {
     const row = { ...b }
     const { data, error } = await timeout(
-        supabase.from('badges').upsert(row).select('*').single()
+        client.from('badges').upsert(row).select('*').single()
     )
     if (error) throw toErr(error)
     return data as Badge
 }
 
 /** Kullanıcıya rozet ver (idempotent) */
-export async function awardBadge(userId: string, badgeCode: string, level: BadgeLevel): Promise<UserBadge> {
+export async function awardBadge(client: SupabaseClient, userId: string, badgeCode: string, level: BadgeLevel): Promise<UserBadge> {
     const row = { user_id: userId, badge_code: badgeCode, level }
     const { data, error } = await timeout(
-        supabase.from('user_badges').upsert(row, { onConflict: 'user_id,badge_code,level' }).select('*').single()
+        client.from('user_badges').upsert(row, { onConflict: 'user_id,badge_code,level' }).select('*').single()
     )
     if (error) throw toErr(error)
     return data as UserBadge
 }
 
 /** (Opsiyonel) Geri al */
-export async function revokeBadge(userId: string, badgeCode: string, level: BadgeLevel): Promise<void> {
+export async function revokeBadge(client: SupabaseClient, userId: string, badgeCode: string, level: BadgeLevel): Promise<void> {
     const { error } = await timeout(
-        supabase.from('user_badges').delete()
+        client.from('user_badges').delete()
             .eq('user_id', userId)
             .eq('badge_code', badgeCode)
             .eq('level', level)

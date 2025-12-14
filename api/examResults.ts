@@ -1,4 +1,5 @@
-import { supabase } from '../lib/supabase'
+// src/api/examResults.ts
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 /** ==== Types (DB ile birebir) ==== */
 export type ExamResult = {
@@ -100,13 +101,14 @@ function must(v: any, name: string) {
 export const ExamResultsAPI = {
     /** Son N kayıt (kullanıcı + konu) */
     async listRecentByTopic(
+        client: SupabaseClient,
         userId: string,
         topicId: string,
         take = 20
     ): Promise<ExamResult[]> {
         try {
             const { data, error } = await timeout(
-                supabase
+                client
                     .from('exam_results_topic')
                     .select('*')
                     .eq('user_id', userId)
@@ -127,13 +129,14 @@ export const ExamResultsAPI = {
      * curriculumId varsa ona da filtre uygularız.
      */
     async listByDateRange(
+        client: SupabaseClient,
         userId: string,
         startISO: string,
         endISO: string,
         curriculumId?: string | null
     ): Promise<ExamResult[]> {
         try {
-            let q = supabase
+            let q = client
                 .from('exam_results_topic')
                 .select('*')
                 .eq('user_id', userId)
@@ -155,6 +158,7 @@ export const ExamResultsAPI = {
 
     /** Insert (RLS ile user_id doğrulanır) */
     async create(
+        client: SupabaseClient,
         userId: string,
         p: ExamResultCreate
     ): Promise<ExamResult> {
@@ -193,7 +197,7 @@ export const ExamResultsAPI = {
             }
 
             const { data, error } = await timeout(
-                supabase
+                client
                     .from('exam_results_topic')
                     .insert(row)
                     .select('*')

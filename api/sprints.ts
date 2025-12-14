@@ -1,9 +1,7 @@
-// src/api/sprints.ts
-import { supabase } from '../lib/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { StudyPlansAPI, type StudyTask, type StudyPlanDTO, type DayKey } from './studyPlans'
 import { CurriculumAPI, type Section, type Lesson, type Topic } from './curriculum'
 
-/** ============== Types ============== */
 export type LessonTeacherMap = Record<number, string>
 
 export type SprintSelection = {
@@ -76,7 +74,6 @@ export type SprintSummary = {
     stats: { totalTasks: number; completedTasks: number; completionRate: number }
 }
 
-/** ============== Helpers ============== */
 class SprintError extends Error { code?: string; constructor(m: string, c?: string) { super(m); this.code = c } }
 const withTimeout = <T>(p: PromiseLike<T>, ms = 10000) =>
     Promise.race<T>([p, new Promise<T>((_, rej) => setTimeout(() => rej(new SprintError('TIMEOUT', 'TIMEOUT')), ms))])
@@ -113,7 +110,6 @@ const isoDate = (d: Date) => d.toISOString().slice(0, 10)
 
 const uuid = () => {
     if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
-    // simple fallback
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
         const r = (Math.random() * 16) | 0, v = c === 'x' ? r : (r & 0x3 | 0x8); return v.toString(16)
     })
@@ -137,10 +133,10 @@ type ScheduledVideo = FlatVideo & {
     original_minutes?: number
 }
 
-async function fetchVideosByTopics(topicIds: string[]): Promise<FlatVideo[]> {
+async function fetchVideosByTopics(client: SupabaseClient, topicIds: string[]): Promise<FlatVideo[]> {
     if (!topicIds.length) return []
     const { data, error } = await withTimeout(
-        supabase
+        client
             .from('playlist_videos')
             .select('playlist_id,video_id,title,duration_minutes,url,topic_uuid,sort_order')
             .in('topic_uuid', topicIds)
@@ -159,7 +155,7 @@ async function fetchVideosByTopics(topicIds: string[]): Promise<FlatVideo[]> {
     })).filter((v: FlatVideo) => !!v.topic_uuid)
 }
 
-async function expandSelectionToTopics(sel: SprintSelection): Promise<{
+async function expandSelectionToTopics(client: SupabaseClient, sel: SprintSelection): Promise<{
     sections: Section[]
     lessons: Lesson[]
     topics: Topic[]
@@ -170,28 +166,27 @@ async function expandSelectionToTopics(sel: SprintSelection): Promise<{
     const { curriculumId } = sel
 
     if (sel.sectionIds?.length) {
-        const allSecs = await CurriculumAPI.fetchSectionsByCurriculumId(curriculumId)
+        const allSecs = await CurriculumAPI.fetchSectionsByCurriculumId(client, curriculumId)
         const secPick = allSecs.filter(s => sel.sectionIds!.includes(s.id))
         sections.push(...secPick)
         for (const s of secPick) {
-            const ls = await CurriculumAPI.fetchLessonsBySectionId(s.id)
+            const ls = await CurriculumAPI.fetchLessonsBySectionId(client, s.id)
             lessons.push(...ls)
             for (const l of ls) {
-                const ts = await CurriculumAPI.fetchTopicsByLessonId(l.id)
+                const ts = await CurriculumAPI.fetchTopicsByLessonId(client, l.id)
                 topics.push(...ts)
             }
         }
     }
 
     if (sel.lessonIds?.length) {
-        // tüm dersleri curriculum’dan topla, filtrele
-        const allSecs = await CurriculumAPI.fetchSectionsByCurriculumId(curriculumId)
+        const allSecs = await CurriculumAPI.fetchSectionsByCurriculumId(client, curriculumId)
         for (const s of allSecs) {
-            const ls = await CurriculumAPI.fetchLessonsBySectionId(s.id)
+            const ls = await CurriculumAPI.fetchLessonsBySectionId(client, s.id)
             const only = ls.filter(l => sel.lessonIds!.includes(l.id))
             lessons.push(...only)
             for (const l of only) {
-                const ts = await CurriculumAPI.fetchTopicsByLessonId(l.id)
+                const ts = await CurriculumAPI.fetchTopicsByLessonId(client, l.id)
                 topics.push(...ts)
             }
         }
@@ -199,7 +194,7 @@ async function expandSelectionToTopics(sel: SprintSelection): Promise<{
 
     if (sel.topicIds?.length) {
         for (const tid of sel.topicIds) {
-            const t = await CurriculumAPI.findTopicById(tid)
+            const t = await CurriculumAPI.findTopicById(client, tid)
             if (t) topics.push(t)
         }
     }
@@ -217,8 +212,8 @@ async function expandSelectionToTopics(sel: SprintSelection): Promise<{
     }
 }
 
-async function buildLessonMeta(curriculumId: string) {
-    const sections = await CurriculumAPI.fetchSectionsByCurriculumId(curriculumId)
+async function buildLessonMeta(client: SupabaseClient, curriculumId: string) {
+    const sections = await CurriculumAPI.fetchSectionsByCurriculumId(client, curriculumId)
     const lessonMap = new Map<number, Lesson>()
     const sectionMap = new Map<number, Section>()
     const sectionOrder = new Map<number, number>()
@@ -229,7 +224,7 @@ async function buildLessonMeta(curriculumId: string) {
     })
     let lessonIdx = 0
     for (const s of sections) {
-        const ls = await CurriculumAPI.fetchLessonsBySectionId(s.id)
+        const ls = await CurriculumAPI.fetchLessonsBySectionId(client, s.id)
         ls.forEach((l) => {
             lessonMap.set(l.id, l)
             lessonOrder.set(l.id, lessonIdx++)
@@ -238,7 +233,7 @@ async function buildLessonMeta(curriculumId: string) {
     return { lessonMap, sectionMap, sectionOrder, lessonOrder }
 }
 
-async function sumVideoDurationsByTopicIds(topicIds: string[]) {
+async function sumVideoDurationsByTopicIds(client: SupabaseClient, topicIds: string[]) {
     if (!topicIds.length) return { totalMinutes: 0, videoCount: 0 }
     const chunkSize = 99
     let totalMinutes = 0
@@ -246,7 +241,7 @@ async function sumVideoDurationsByTopicIds(topicIds: string[]) {
         for (let i = 0; i < topicIds.length; i += chunkSize) {
             const chunk = topicIds.slice(i, i + chunkSize)
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('playlist_videos')
                     .select('duration_minutes')
                     .in('topic_uuid', chunk)
@@ -382,10 +377,10 @@ const normalizeCountValue = (value: any): number => {
     return Number.isFinite(num) ? num : 0
 }
 
-const fetchSprintContentStats = async (sprintId: string): Promise<{ sections: number; lessons: number; topics: number }> => {
+const fetchSprintContentStats = async (client: SupabaseClient, sprintId: string): Promise<{ sections: number; lessons: number; topics: number }> => {
     if (!sprintId) return { sections: 0, lessons: 0, topics: 0 }
     const { data, error } = await withTimeout(
-        supabase.rpc('get_sprint_content_stats', { sprint_uuid: sprintId })
+        client.rpc('get_sprint_content_stats', { sprint_uuid: sprintId })
     ) as any
     if (error) throw error
     const row = Array.isArray(data) ? data[0] : data
@@ -438,6 +433,7 @@ const orderVideosByCurriculum = (
 }
 
 async function buildTeacherPlaylistAllowlist(
+    client: SupabaseClient,
     curriculumId: string,
     lessonTeacherMap: Map<number, string>,
     lessonMap?: Map<number, Lesson>
@@ -446,7 +442,7 @@ async function buildTeacherPlaylistAllowlist(
     const lessonIds = [...lessonTeacherMap.keys()]
 
     const { data, error } = await withTimeout(
-        supabase
+        client
             .from('playlists')
             .select('id,lesson_id,teacher')
             .eq('curriculum_id', curriculumId)
@@ -488,6 +484,7 @@ async function buildTeacherPlaylistAllowlist(
 }
 
 async function sumVideoDurationsWithTeacherFilter(
+    client: SupabaseClient,
     topics: Topic[],
     allowedPlaylistsByLesson: Map<number, Set<string>>,
     teacherMap: Map<number, string>,
@@ -495,7 +492,7 @@ async function sumVideoDurationsWithTeacherFilter(
 ): Promise<SprintSelectionEstimate> {
     if (!topics.length) return { totalMinutes: 0, videoCount: 0, topicCount: 0 }
     if (!allowedPlaylistsByLesson.size) {
-        const { totalMinutes, videoCount } = await sumVideoDurationsByTopicIds(topics.map((t) => t.uuid))
+        const { totalMinutes, videoCount } = await sumVideoDurationsByTopicIds(client, topics.map((t) => t.uuid))
         return { totalMinutes, videoCount, topicCount: topics.length }
     }
 
@@ -516,7 +513,7 @@ async function sumVideoDurationsWithTeacherFilter(
     let videoCount = 0
 
     if (generalTopics.length) {
-        const res = await sumVideoDurationsByTopicIds(generalTopics)
+        const res = await sumVideoDurationsByTopicIds(client, generalTopics)
         totalMinutes += res.totalMinutes
         videoCount += res.videoCount
     }
@@ -530,7 +527,7 @@ async function sumVideoDurationsWithTeacherFilter(
         const chunks = chunkArray(topicIds, 99)
         for (const chunk of chunks) {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('playlist_videos')
                     .select('duration_minutes')
                     .in('topic_uuid', chunk)
@@ -573,18 +570,19 @@ type PreparedVideos = {
     lessons: Lesson[]
 }
 
-async function prepareOrderedVideos(selection: SprintSelection): Promise<PreparedVideos> {
+async function prepareOrderedVideos(client: SupabaseClient, selection: SprintSelection): Promise<PreparedVideos> {
     if (!selection.curriculumId) throw new SprintError('Müfredat seçin', 'NO_CURRICULUM')
     const lessonTeachers = toLessonTeacherMap(selection.lessonTeacherMap)
-    const { topics, lessons } = await expandSelectionToTopics(selection)
+    const { topics, lessons } = await expandSelectionToTopics(client, selection)
     if (!topics.length) throw new SprintError('Seçimden konu bulunamadı.', 'NO_TOPICS')
 
-    const videos = await fetchVideosByTopics(topics.map(t => t.uuid))
+    const videos = await fetchVideosByTopics(client, topics.map(t => t.uuid))
     if (!videos.length) throw new SprintError('Seçilen konulara ait video bulunamadı.', 'NO_VIDEOS')
 
-    const { lessonMap, sectionMap } = await buildLessonMeta(selection.curriculumId)
+    const { lessonMap, sectionMap } = await buildLessonMeta(client, selection.curriculumId)
     const topicById = new Map<string, Topic>(topics.map(t => [t.uuid, t]))
     const teacherAllowlist = await buildTeacherPlaylistAllowlist(
+        client,
         selection.curriculumId,
         lessonTeachers,
         lessonMap
@@ -648,7 +646,7 @@ type PlanBuildOptions = {
     topicOrder: Map<string, number>
 }
 
-async function createStudyPlanFromVideos(opts: PlanBuildOptions): Promise<string[]> {
+async function createStudyPlanFromVideos(client: SupabaseClient, opts: PlanBuildOptions): Promise<string[]> {
     const {
         userId,
         sprintId,
@@ -661,20 +659,6 @@ async function createStudyPlanFromVideos(opts: PlanBuildOptions): Promise<string
         topicOrder
     } = opts
 
-    if (typeof console !== 'undefined') {
-        const debugList = orderedVideos.map((v, idx) => ({
-            order: idx + 1,
-            lesson_id: v.lesson_id,
-            lesson_name: v.lesson_id ? lessonMap.get(v.lesson_id)?.name ?? null : null,
-            topic_uuid: v.topic_uuid,
-            topic_order: topicOrder.get(v.topic_uuid) ?? null,
-            title: v.title,
-            duration_minutes: v.duration_minutes,
-            playlist_id: v.playlist_id,
-            video_id: v.video_id
-        }))
-        console.info('[sprint] ders programına eklenecek sıralı videolar', debugList)
-    }
 
     const perLessonCaps = new Map<number, number>()
     if (lessonDailyMinutes) {
@@ -814,7 +798,7 @@ async function createStudyPlanFromVideos(opts: PlanBuildOptions): Promise<string
             tasks.push(...list)
             daily[dk] = { total: list.length, completed: 0 }
         }
-        await StudyPlansAPI.upsertPlan(userId, weekStartISO, tasks, daily, { sprintId, append: true })
+        await StudyPlansAPI.upsertPlan(client, userId, weekStartISO, tasks, daily, { sprintId, append: true })
         affectedWeeks.push(weekStartISO)
     }
 
@@ -823,16 +807,17 @@ async function createStudyPlanFromVideos(opts: PlanBuildOptions): Promise<string
 
 /** ============== Core ============== */
 export const SprintsAPI = {
-    async estimateSelection(selection: SprintSelection): Promise<SprintSelectionEstimate> {
+    async estimateSelection(client: SupabaseClient, selection: SprintSelection): Promise<SprintSelectionEstimate> {
         if (!selection.curriculumId) throw new SprintError('Müfredat seçin', 'NO_CURRICULUM')
-        const { topics, lessons } = await expandSelectionToTopics(selection)
+        const { topics, lessons } = await expandSelectionToTopics(client, selection)
         if (!topics.length) {
             return { topicCount: 0, videoCount: 0, totalMinutes: 0 }
         }
         const teacherMap = toLessonTeacherMap(selection.lessonTeacherMap)
         const lessonMap = new Map<number, Lesson>(lessons.map((l) => [l.id, l]))
-        const allowlist = await buildTeacherPlaylistAllowlist(selection.curriculumId, teacherMap, lessonMap)
+        const allowlist = await buildTeacherPlaylistAllowlist(client, selection.curriculumId, teacherMap, lessonMap)
         const { totalMinutes, videoCount, topicCount } = await sumVideoDurationsWithTeacherFilter(
+            client,
             topics,
             allowlist,
             teacherMap,
@@ -841,8 +826,8 @@ export const SprintsAPI = {
         return { totalMinutes, videoCount, topicCount }
     },
 
-    async videosForSelection(selection: SprintSelection): Promise<SprintSelectionVideo[]> {
-        const { orderedVideos, lessonMap, sectionMap, topicOrder, topicById } = await prepareOrderedVideos(selection)
+    async videosForSelection(client: SupabaseClient, selection: SprintSelection): Promise<SprintSelectionVideo[]> {
+        const { orderedVideos, lessonMap, sectionMap, topicOrder, topicById } = await prepareOrderedVideos(client, selection)
         return orderedVideos.map((v, idx) => {
             const lesson = v.lesson_id ? lessonMap.get(v.lesson_id) : undefined
             const section = lesson?.section_id ? sectionMap.get(lesson.section_id) : undefined
@@ -865,11 +850,11 @@ export const SprintsAPI = {
         })
     },
 
-    async listByUser(userId: string): Promise<SprintSummary[]> {
+    async listByUser(client: SupabaseClient, userId: string): Promise<SprintSummary[]> {
         if (!userId) throw new SprintError('Kullanıcı bulunamadı', 'NO_USER')
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('sprints')
                     .select('*')
                     .eq('user_id', userId)
@@ -885,7 +870,7 @@ export const SprintsAPI = {
 
             if (ids.length) {
                 const { data: planRows, error: planErr } = await withTimeout(
-                    supabase
+                    client
                         .from('study_plans')
                         .select('id,sprint_id,total_tasks,completed_tasks')
                         .eq('user_id', userId)
@@ -903,7 +888,7 @@ export const SprintsAPI = {
             }
 
             await Promise.all(rows.map(async (row) => {
-                const stats = await fetchSprintContentStats(row.id)
+                const stats = await fetchSprintContentStats(client, row.id)
                 contentStats.set(row.id, stats)
             }))
 
@@ -943,12 +928,12 @@ export const SprintsAPI = {
         }
     },
 
-    async deleteById(userId: string, sprintId: string): Promise<void> {
+    async deleteById(client: SupabaseClient, userId: string, sprintId: string): Promise<void> {
         if (!userId) throw new SprintError('Kullanıcı bulunamadı', 'NO_USER')
         if (!sprintId) throw new SprintError('Koşu bulunamadı', 'NO_SPRINT')
         try {
             const { data: planRows, error: planErr } = await withTimeout(
-                supabase
+                client
                     .from('study_plans')
                     .select('id')
                     .eq('user_id', userId)
@@ -964,23 +949,23 @@ export const SprintsAPI = {
                 for (const chunk of chunks) {
                     if (!chunk.length) continue
                     const taskRes = await withTimeout(
-                        supabase.from('study_plan_tasks').delete().in('plan_id', chunk)
+                        client.from('study_plan_tasks').delete().in('plan_id', chunk)
                     ) as any
                     if (taskRes.error) throw taskRes.error
                     const dailyRes = await withTimeout(
-                        supabase.from('study_plan_daily_stats').delete().in('plan_id', chunk)
+                        client.from('study_plan_daily_stats').delete().in('plan_id', chunk)
                     ) as any
                     if (dailyRes.error) throw dailyRes.error
                 }
             }
 
             const deletePlans = await withTimeout(
-                supabase.from('study_plans').delete().eq('user_id', userId).eq('sprint_id', sprintId)
+                client.from('study_plans').delete().eq('user_id', userId).eq('sprint_id', sprintId)
             ) as any
             if (deletePlans.error) throw deletePlans.error
 
             const deleteSprint = await withTimeout(
-                supabase.from('sprints').delete().eq('id', sprintId).eq('user_id', userId)
+                client.from('sprints').delete().eq('id', sprintId).eq('user_id', userId)
             ) as any
             if (deleteSprint.error) throw deleteSprint.error
         } catch (e: any) {
@@ -988,15 +973,15 @@ export const SprintsAPI = {
         }
     },
 
-    async generate(input: SprintGenerateInput): Promise<SprintGenerateResult> {
+    async generate(client: SupabaseClient, input: SprintGenerateInput): Promise<SprintGenerateResult> {
         try {
             if (!input.userId) throw new SprintError('Kullanıcı bulunamadı', 'NO_USER')
             if (!input.selection?.curriculumId) throw new SprintError('Müfredat seçin', 'NO_CURRICULUM')
-            const prepared = await prepareOrderedVideos(input.selection)
+            const prepared = await prepareOrderedVideos(client, input.selection)
             const sprintTitle = buildSprintTitle(prepared.lessons, prepared.topics, prepared.lessonMap)
 
             const { data: sprintRow, error: sprintErr } = await withTimeout(
-                supabase.from('sprints').insert({
+                client.from('sprints').insert({
                     user_id: input.userId,
                     title: sprintTitle,
                     scope: {
@@ -1019,7 +1004,7 @@ export const SprintsAPI = {
 
             const { orderedVideos, lessonMap, topicOrder } = prepared
 
-            const affectedWeeks = await createStudyPlanFromVideos({
+            const affectedWeeks = await createStudyPlanFromVideos(client, {
                 userId: input.userId,
                 sprintId,
                 selection: input.selection,

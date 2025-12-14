@@ -7,18 +7,25 @@ RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
+# Build args (Northflank Build arguments buraya gelir)
+ARG SUPABASE_URL
+ARG SUPABASE_KEY
+ARG NUXT_PUBLIC_SUPABASE_URL
+ARG NUXT_PUBLIC_SUPABASE_KEY
 
+# Build sırasında Nuxt/modül bunları okuyabilsin
+ENV SUPABASE_URL=${SUPABASE_URL}
+ENV SUPABASE_KEY=${SUPABASE_KEY}
+ENV NUXT_PUBLIC_SUPABASE_URL=${NUXT_PUBLIC_SUPABASE_URL}
+ENV NUXT_PUBLIC_SUPABASE_KEY=${NUXT_PUBLIC_SUPABASE_KEY}
+
+COPY package.json package-lock.json* ./
 RUN npm install
 
 COPY . .
 
-# Build alırken .env dosyasını okumasını sağlar.
-COPY .env .
-
 RUN npm run postinstall
 RUN npm run build
-
 
 # ----------------------------
 # 2. PRODUCTION aşaması

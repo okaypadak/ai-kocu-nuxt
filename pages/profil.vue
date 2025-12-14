@@ -1,15 +1,13 @@
-<!-- src/views/ProfileView.vue -->
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import Navbar from '../components/Navbar.vue'
 import { useAuthStore } from '../stores/auth.store'
 import { useProfile } from '../queries/useProfile'
-import { useCurricula } from '../queries/useCurricula'   // ⬅ useSections kaldırıldı
+import { useCurricula } from '../queries/useCurricula'
 import { createPremiumPayment, PACKAGES, type PackageKey, type CardData } from '../api/premium'
 import CreditCardForm from '../components/CreditCardForm.vue'
 import { normalizePreferredCurriculumId, type AiMode, type AiCreativity, type AiInspiration, type AiReward } from '../api/profile'
 
-/* Helpers */
 const fmtDate = (s?: string) => {
   if (!s) return ''
   const d = new Date(s)
@@ -17,11 +15,9 @@ const fmtDate = (s?: string) => {
 }
 const norm = (v?: string | null) => (typeof v === 'string' ? v.trim() : v ?? '')
 
-/* Auth & Queries */
 const auth = useAuthStore()
 const uid = computed(() => auth.userId)
 
-// Profil (isLoading çıkarıldı)
 const {
   data: profile,
   error: profErr,
@@ -34,10 +30,8 @@ const {
   refetch: refetchProfile
 } = useProfile(uid)
 
-// Müfredatlar
 const { data: curricula, isLoading: curLoading, error: curErr } = useCurricula()
 
-// Yapay zeka seçenekleri (Türkçe etiketlerle)
 const aiModeOptions: { value: AiMode; label: string }[] = [
   { value: 'professional_coach', label: 'Profesyonel koç' },
   { value: 'soft_mentor', label: 'Yumuşak mentor' },
@@ -70,7 +64,6 @@ const aiRewardOptions: { value: AiReward; label: string }[] = [
   { value: 'none', label: 'Ödül istemiyorum' }
 ]
 
-// const premiumPlanList removed
 
 const aiDefaults = {
   ai_mode: 'professional_coach' as AiMode,
@@ -83,7 +76,6 @@ const aiDefaults = {
   ai_prediction_enabled: true
 }
 
-/* Form State */
 const selected = ref('')
 const prefError = ref<string | null>(null)
 const aiForm = reactive({ ...aiDefaults })
@@ -92,13 +84,11 @@ const selectedPlan = ref<PackageKey>('monthly')
 const premiumError = ref<string | null>(null)
 const premiumLoading = ref(false)
 
-// New Payment Flow State
 const showCreditCardForm = ref(false)
 const showThreeDSModal = ref(false)
 const threeDSHtml = ref('')
 const paymentSuccess = ref(false)
 
-// Restoring Billing State
 const billingSectionRef = ref<HTMLElement | null>(null)
 const billingNameInput = ref('')
 const customerForm = reactive({
@@ -139,24 +129,16 @@ try {
 }
 
 // Listen for payment success from iframe
-// Listen for payment success/failure from iframe
 const onMessage = async (event: MessageEvent) => {
-  // Debug Log
-  if (event.data?.type?.startsWith('payment_')) {
-      console.log('[ProfileView] Payment Event Received:', event.data)
-  }
 
   if (!event.data) return
 
-  // Ödeme Başarısız
   if (event.data.type === 'payment_failure') {
       closePaymentModals()
       premiumError.value = event.data.message || 'Ödeme gerçekleştirilemedi.'
-      // Hata mesajını biraz gösterip sonra belki null yapabiliriz, şu an kalıcı.
       return
   }
 
-  // Ödeme Başarılı
   if (event.data.type === 'payment_success') {
     closePaymentModals()
     paymentSuccess.value = true
@@ -167,10 +149,8 @@ const onMessage = async (event: MessageEvent) => {
         auth.$patch({ premiumEndsAt: event.data.premiumEndsAt })
     }
 
-    // 2. Güvence: Yine de profili tazeleyelim (belki başka fieldlar değişmiştir)
     await refetchProfile()
 
-    // 5 saniye sonra başarı mesajını kaldır
     setTimeout(() => {
         paymentSuccess.value = false
     }, 5000)
@@ -179,7 +159,6 @@ const onMessage = async (event: MessageEvent) => {
 
  onMounted(async () => {
  window.addEventListener('message', onMessage)
- // Custom param check if callback redirects top frame
  if (new URLSearchParams(window.location.search).get('payment_success')) {
      paymentSuccess.value = true
      window.history.replaceState({}, '', window.location.pathname)
@@ -191,7 +170,6 @@ onBeforeUnmount(() => {
  window.removeEventListener('message', onMessage)
 })
 
-// profile geldiğinde formu doldur
 watch(
   () => profile.value,
   (p) => {
@@ -217,7 +195,6 @@ watch(
         : aiDefaults.ai_prediction_enabled
     customerForm.tax_number = p.customer_tax_number ?? ''
 
-    // Sync premium status to store if fetched fresh data
     if (p.premium_ends_at && p.premium_ends_at !== auth.premiumEndsAt) {
         auth.$patch({ premiumEndsAt: p.premium_ends_at })
     }
@@ -225,7 +202,6 @@ watch(
   { immediate: true }
 )
 
-/* Derived / UI */
 const premiumEndsAtDate = computed<Date | null>(() => {
   const raw = auth.premiumEndsAt
   if (!raw) return null
@@ -342,7 +318,6 @@ async function onSaveName() {
   }
 }
 
-/* Actions */
 async function onStartPremium(key: string) {
   selectedPlan.value = key as PackageKey
   if (!uid) {
@@ -357,7 +332,6 @@ async function onStartPremium(key: string) {
       return
   }
 
-  // Auto-save name if changed
   if (hasNameChanges.value) {
       try {
         await updateBasics.mutateAsync({ fullname: billingName.value })
@@ -376,11 +350,9 @@ async function onStartPremium(key: string) {
       }
   }
   
-  // Open The Modal
   showCreditCardForm.value = true
 }
 
-// iyzico'nun döndürdüğü script'in çalışması için HTML'i manuel yerleştirip <script> etiketlerini yeniden çalıştır.
 
 
 watch(selected, (val) => {
@@ -414,17 +386,14 @@ async function onSaveAi() {
 
 <template>
   <div class="min-h-screen bg-white xl:bg-sky-100 flex flex-col">
-    <!-- Header -->
     <header class="px-4">
       <Navbar />
     </header>
 
-    <!-- Main -->
     <main class="flex-grow flex justify-center items-start px-0 py-6 xl:px-4 xl:py-8">
       <div
         class="w-full max-w-6xl bg-white p-4 xl:p-8 space-y-8 rounded-none shadow-none border-0 xl:rounded-[24px] xl:shadow-2xl xl:border xl:border-slate-100"
       >
-        <!-- Başlık -->
         <div class="text-center space-y-1">
           <h1 class="text-3xl font-bold text-sky-700">Profilim</h1>
           <p class="text-slate-600">Bilgilerini görüntüle ve müfredat tercihlerini gözden geçir.</p>
@@ -452,7 +421,6 @@ async function onSaveAi() {
         </div>
 
         <template v-else>
-          <!-- Uyarı bandı -->
           <div
             v-if="!preferredLabel"
             class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800"
@@ -461,7 +429,6 @@ async function onSaveAi() {
             <div class="text-sm">Lütfen aşağıdan çalışmak istediğiniz müfredatı seçin.</div>
           </div>
 
-          <!-- Hesap Bilgileri -->
           <section class="rounded-2xl border border-slate-200 xl:border-sky-100 bg-white xl:bg-sky-50 p-6 space-y-6">
             <h2 class="text-2xl font-semibold text-slate-900 xl:text-sky-700">Hesap Bilgileri</h2>
 
@@ -483,7 +450,6 @@ async function onSaveAi() {
             </div>
           </section>
 
-          <!-- Kişisel Bilgiler -->
           <section
             ref="billingSectionRef"
             class="rounded-2xl border border-slate-200 xl:border-amber-200 bg-white xl:bg-amber-50 p-6 space-y-5"
@@ -533,7 +499,6 @@ async function onSaveAi() {
             </div>
           </section>
 
-          <!-- Premium Üyelik -->
           <section class="rounded-2xl border border-slate-200 xl:border-emerald-200 bg-white xl:bg-emerald-50 p-6 space-y-5">
             <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div class="space-y-1">
@@ -611,7 +576,6 @@ async function onSaveAi() {
             </div>
           </section>
 
-          <!-- Yapay Zeka Asistanım -->
           <section
             class="rounded-2xl border border-slate-200 xl:border-indigo-100 bg-white xl:bg-gradient-to-r xl:from-sky-50 xl:via-indigo-50 xl:to-purple-50 p-6 xl:p-7 space-y-6"
           >
@@ -756,7 +720,6 @@ async function onSaveAi() {
             </div>
           </section>
 
-          <!-- Müfredat Tercihi -->
           <section class="rounded-2xl border border-slate-200 p-6 space-y-4">
             <h2 class="text-2xl font-semibold text-sky-700">Müfredat Tercihi</h2>
 

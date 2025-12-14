@@ -1,5 +1,5 @@
 // src/api/curriculumImport.ts
-import { supabase } from '../lib/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type CurriculumDoc = {
     id?: string           // opsiyonel – tek doküman için override edilebilir
@@ -102,18 +102,18 @@ export function computeStats(list: CurriculumDoc[]) {
 }
 
 /** curriculum_json tablosundan mevcut payload oku (merge için) */
-async function getExistingPayload(id: string): Promise<any | null> {
+async function getExistingPayload(client: SupabaseClient, id: string): Promise<any | null> {
     const { data, error } = await withTimeout(
-        supabase.from('curriculum_json').select('payload').eq('id', id).maybeSingle()
+        client.from('curriculum_json').select('payload').eq('id', id).maybeSingle()
     )
     if (error) throw error
     return data?.payload ?? null
 }
 
 /** RPC çağrısı: public.upsert_curriculum_json(p_id, p_json) */
-async function rpcUpsert(id: string, payload: any) {
+async function rpcUpsert(client: SupabaseClient, id: string, payload: any) {
     const { error } = await withTimeout(
-        supabase.rpc('upsert_curriculum_json', { p_id: id, p_json: payload })
+        client.rpc('upsert_curriculum_json', { p_id: id, p_json: payload })
     )
     if (error) throw error
 }
@@ -124,7 +124,7 @@ export const CurriculumImportAPI = {
      * - preferExamTitle true ise title=exam
      * - merge true ise mevcut payload ile merge ederek gönder
      */
-    async upsertOne(raw: CurriculumDoc, opts: ImportOptions = {}): Promise<string> {
+    async upsertOne(client: SupabaseClient, raw: CurriculumDoc, opts: ImportOptions = {}): Promise<string> {
         try {
             const id = (opts.id || raw.id || suggestIdForOne(raw)).trim()
             if (!id) throw new CurriculumImportError('Geçerli bir id üretilemedi.')
@@ -137,11 +137,11 @@ export const CurriculumImportAPI = {
 
             let finalPayload: any = payload
             if (opts.merge) {
-                const existing = await getExistingPayload(id)
+                const existing = await getExistingPayload(client, id)
                 finalPayload = existing ? deepMerge(existing, payload) : payload
             }
 
-            await rpcUpsert(id, finalPayload)
+            await rpcUpsert(client, id, finalPayload)
             return id
         } catch (e) {
             throw normalizeError(e)
@@ -149,11 +149,11 @@ export const CurriculumImportAPI = {
     },
 
     /** Çoklu upsert: her dokümana id öner ve sırayla RPC çağır */
-    async upsertMany(list: CurriculumDoc[], opts: Omit<ImportOptions, 'id'> = {}): Promise<string[]> {
+    async upsertMany(client: SupabaseClient, list: CurriculumDoc[], opts: Omit<ImportOptions, 'id'> = {}): Promise<string[]> {
         try {
             const ids: string[] = []
             for (const raw of list) {
-                const id = await this.upsertOne(raw, { ...opts, id: undefined })
+                const id = await this.upsertOne(client, raw, { ...opts, id: undefined })
                 ids.push(id)
             }
             return ids

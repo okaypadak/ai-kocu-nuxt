@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, unref, watch, ref } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import type { NotificationRow as BaseNotificationRow } from './useNotifications'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 type MaybeRef<T> = T | Ref<T> | ComputedRef<T>
 
@@ -33,7 +34,7 @@ const conversationKeysForId = (conversationId?: string | null) => {
   return keys
 }
 
-async function fetchSupportMessages(client: any, participantId: string, conversationId?: string | null): Promise<SupportMessage[]> {
+async function fetchSupportMessages(client: SupabaseClient, participantId: string, conversationId?: string | null): Promise<SupportMessage[]> {
   let q = client
     .from('notifications')
     .select('*')
@@ -52,7 +53,7 @@ async function fetchSupportMessages(client: any, participantId: string, conversa
   return (data ?? []) as SupportMessage[]
 }
 
-async function fetchAllSupportMessages(client: any, participantId: string): Promise<SupportMessage[]> {
+async function fetchAllSupportMessages(client: SupabaseClient, participantId: string): Promise<SupportMessage[]> {
   const { data, error } = await client
     .from('notifications')
     .select('*')
@@ -64,7 +65,7 @@ async function fetchAllSupportMessages(client: any, participantId: string): Prom
   return (data ?? []) as SupportMessage[]
 }
 
-async function fetchSupportInbox(client: any, limit: number): Promise<SupportMessage[]> {
+async function fetchSupportInbox(client: SupabaseClient, limit: number): Promise<SupportMessage[]> {
   const { data, error } = await client
     .from('notifications')
     .select('*')
@@ -87,7 +88,7 @@ type InsertPayload = {
   status?: string
 }
 
-async function insertSupportMessage(client: any, payload: InsertPayload) {
+async function insertSupportMessage(client: SupabaseClient, payload: InsertPayload) {
   const baseData = {
     user_id: payload.receiverId,
     sender_id: payload.senderId,
@@ -113,7 +114,7 @@ async function insertSupportMessage(client: any, payload: InsertPayload) {
   return data as SupportMessage
 }
 
-async function updateConversationStatus(client: any, conversationId: string, status: string) {
+async function updateConversationStatus(client: SupabaseClient, conversationId: string, status: string) {
   const { data, error } = await client
     .from('notifications')
     .update({ status })

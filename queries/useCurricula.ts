@@ -1,3 +1,4 @@
+// src/queries/useCurricula.ts
 import { qk } from './keys'
 import { computed, unref, type Ref, type ComputedRef } from 'vue'
 import {
@@ -15,12 +16,12 @@ const toVal = <T,>(src: MaybeReactive<T>) =>
     typeof src === 'function' ? computed(() => (src as any)()) : computed(() => unref(src as any))
 
 export function useCurricula() {
+    const client = useSupabaseClient()
     const key = computed(() => qk.curricula.join(':'))
     const { data, pending, error, refresh } = useAsyncData<Curriculum[]>(
         key.value,
-        () => CurriculumAPI.fetchAll(),
+        () => CurriculumAPI.fetchAll(client),
         {
-            placeholderData: (p) => p
             // staleTime handled by Nuxt default or manual
         }
     )
@@ -28,6 +29,7 @@ export function useCurricula() {
 }
 
 export function useSections(curriculumId: MaybeReactive<string | null | undefined>) {
+    const client = useSupabaseClient()
     const id = toVal(curriculumId) // string|null|undefined
     const key = computed(() => qk.sections(id.value ?? '').join(':'))
     
@@ -35,17 +37,17 @@ export function useSections(curriculumId: MaybeReactive<string | null | undefine
         key.value,
         () => {
             if (!id.value) return Promise.resolve([])
-            return CurriculumAPI.fetchSectionsByCurriculumId(id.value)
+            return CurriculumAPI.fetchSectionsByCurriculumId(client, id.value)
         },
         {
             watch: [id],
-            placeholderData: (p) => p
         }
     )
     return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useLessons(sectionId: MaybeReactive<number | undefined>) {
+    const client = useSupabaseClient()
     const id = toVal(sectionId)
     const key = computed(() => qk.lessons(String(id.value ?? '')).join(':'))
 
@@ -53,17 +55,17 @@ export function useLessons(sectionId: MaybeReactive<number | undefined>) {
         key.value,
         () => {
              if (!id.value) return Promise.resolve([])
-             return CurriculumAPI.fetchLessonsBySectionId(id.value)
+             return CurriculumAPI.fetchLessonsBySectionId(client, id.value)
         },
         {
             watch: [id],
-            placeholderData: (p) => p
         }
     )
     return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useTopics(lessonId: MaybeReactive<number | undefined>) {
+    const client = useSupabaseClient()
     const id = toVal(lessonId)
     const key = computed(() => qk.topics(String(id.value ?? '')).join(':'))
     
@@ -71,7 +73,7 @@ export function useTopics(lessonId: MaybeReactive<number | undefined>) {
         key.value,
         async () => {
              if (!id.value) return Promise.resolve([])
-             const rows = await CurriculumAPI.fetchTopicsByLessonId(id.value)
+             const rows = await CurriculumAPI.fetchTopicsByLessonId(client, id.value)
              return [...rows].sort((a, b) => {
                 const sa = a.sort_order ?? 9_999
                 const sb = b.sort_order ?? 9_999
@@ -80,13 +82,13 @@ export function useTopics(lessonId: MaybeReactive<number | undefined>) {
         },
         {
             watch: [id],
-            placeholderData: (p) => p
         }
     )
     return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useCurriculumTree(curriculumId: MaybeReactive<string | null | undefined>) {
+    const client = useSupabaseClient()
     const id = toVal(curriculumId)
     const key = computed(() => qk.tree(id.value ?? '').join(':'))
     
@@ -94,17 +96,17 @@ export function useCurriculumTree(curriculumId: MaybeReactive<string | null | un
         key.value,
         () => {
             if (!id.value) return Promise.resolve({})
-            return CurriculumAPI.fetchTree(id.value)
+            return CurriculumAPI.fetchTree(client, id.value)
         },
         {
             watch: [id],
-            placeholderData: (p) => p
         }
     )
     return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useCurriculumStats(curriculumId: MaybeReactive<string | null | undefined>) {
+    const client = useSupabaseClient()
     const id = toVal(curriculumId)
     const key = computed(() => qk.stats(id.value ?? '').join(':'))
     
@@ -112,11 +114,10 @@ export function useCurriculumStats(curriculumId: MaybeReactive<string | null | u
         key.value,
         () => {
             if (!id.value) return Promise.resolve({ sections: 0, lessons: 0, topics: 0 })
-            return CurriculumAPI.fetchStats(id.value)
+            return CurriculumAPI.fetchStats(client, id.value)
         },
         {
             watch: [id],
-            placeholderData: (p) => p
         }
     )
     return { data, isLoading: pending, error, refetch: refresh }

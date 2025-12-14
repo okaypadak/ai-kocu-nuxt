@@ -1,5 +1,5 @@
+// queries/useStatistics.ts
 import { ref, computed, unref, type Ref, type ComputedRef } from 'vue'
-import { supabase } from '../lib/supabase'
 import { StatisticsAPI } from '../api/statistics'
 
 type MaybeReactive<T> = T | Ref<T> | ComputedRef<T> | (() => T)
@@ -19,6 +19,7 @@ const formatDate = (date: Date) => {
 
 /** 🔹 Günlük trend + Streak */
 export function useDailyStudy(userId: MaybeReactive<string | undefined>) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
 
     type DayPoint = { date: string; totalminutes: number; totalMinutes?: number }
@@ -78,7 +79,7 @@ export function useDailyStudy(userId: MaybeReactive<string | undefined>) {
 
             const range = { from: formatDate(startDate), to: formatDate(today) }
 
-            const sessions = await StatisticsAPI.fetchStudySessions(uid.value, range)
+            const sessions = await StatisticsAPI.fetchStudySessions(client, uid.value, range)
 
             // gün -> toplam dakika
             const totals = new Map<string, number>()
@@ -113,6 +114,7 @@ export function useDailyStudy(userId: MaybeReactive<string | undefined>) {
 
 /** 🔹 Ders ilerlemesi (RPC) */
 export function useLessonProgress(userId: MaybeReactive<string | undefined>) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const lessons = ref<
         Array<{
@@ -129,7 +131,7 @@ export function useLessonProgress(userId: MaybeReactive<string | undefined>) {
         if (!uid.value) return
         pending.value = true
         try {
-            const { data, error: err } = await supabase.rpc('fn_get_lesson_progress', {
+            const { data, error: err } = await client.rpc('fn_get_lesson_progress', {
                 p_user_id: uid.value
             })
             if (err) throw err
@@ -147,6 +149,7 @@ export function useLessonProgress(userId: MaybeReactive<string | undefined>) {
 
 /** 🔹 Ders -> konu ilerlemesi (RPC) */
 export function useTopicProgress(userId: MaybeReactive<string | undefined>) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const topics = ref<
         Array<{
@@ -164,7 +167,7 @@ export function useTopicProgress(userId: MaybeReactive<string | undefined>) {
         if (!uid.value) return
         pending.value = true
         try {
-            const { data, error: err } = await supabase.rpc('fn_get_topic_progress', {
+            const { data, error: err } = await client.rpc('fn_get_topic_progress', {
                 p_user_id: uid.value
             })
             if (err) throw err
@@ -185,6 +188,7 @@ export function useOverallProgress(
     userId: MaybeReactive<string | undefined>,
     curriculumId: MaybeReactive<string | null | undefined>
 ) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const cid = toVal(curriculumId)
     type TopicSummaryRow = {
@@ -207,7 +211,7 @@ export function useOverallProgress(
         pending.value = true
         try {
             const pCurriculum = normalizeUuid(cid.value)
-            const { data: raw, error: err } = await supabase
+            const { data: raw, error: err } = await client
                 .rpc('get_curriculum_topic_summary', {
                     p_user_id: uid.value,
                     p_curriculum_id: pCurriculum

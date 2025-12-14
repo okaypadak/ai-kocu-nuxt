@@ -650,6 +650,7 @@ watch(
     topicMap.value = new Map();
     if (!cid) return;
 
+    const client = useSupabaseClient();
     // yarış koşullarına karşı token
     const token = ++loadToken;
     // sections query zaten fetchliyor; buradan derinleri doldur
@@ -664,11 +665,11 @@ watch(
     const secArr = sectionList.value;
     for (const s of secArr) {
       if (!s?.id) continue;
-      const ls = await CurriculumAPI.fetchLessonsBySectionId(s.id);
+      const ls = await CurriculumAPI.fetchLessonsBySectionId(client, s.id);
       if (token !== loadToken) return;
       lessonMap.value.set(s.id, ls);
       for (const l of ls) {
-        const ts = await CurriculumAPI.fetchTopicsByLessonId(l.id);
+        const ts = await CurriculumAPI.fetchTopicsByLessonId(client, l.id);
         if (token !== loadToken) return;
         topicMap.value.set(l.id, ts);
       }
@@ -864,10 +865,13 @@ watch(
     }
     selectionSummary.isLoading = true;
     selectionSummary.error = "";
+// ...
+    const client = useSupabaseClient();
     const token = ++summaryToken;
     try {
-      const res = await SprintsAPI.estimateSelection(payload);
+      const res = await SprintsAPI.estimateSelection(client, payload);
       if (token !== summaryToken) return;
+// ...
       selectionSummary.totalMinutes = res.totalMinutes;
       selectionSummary.topicCount = res.topicCount;
       selectionSummary.videoCount = res.videoCount;

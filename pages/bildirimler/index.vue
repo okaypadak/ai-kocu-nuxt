@@ -88,12 +88,12 @@ watch([searchTitle, searchBody], () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-sky-100 flex flex-col px-4">
+  <div class="min-h-screen bg-sky-100 flex flex-col">
     <header>
       <Navbar />
     </header>
 
-    <main class="flex-grow flex items-start justify-center px-4 py-8">
+    <main class="flex-grow flex items-start justify-center py-8">
       <div class="w-full max-w-6xl bg-white rounded-3xl shadow-2xl p-6 md:p-8 space-y-6">
         <header class="space-y-4">
           <div class="space-y-1 text-center md:text-left">

@@ -1,5 +1,5 @@
 // src/api/youtubePlaylists.ts
-import { supabase } from '../lib/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type YoutubeVideo = {
   id: string
@@ -110,8 +110,8 @@ export async function fetchVideosDetails(videoIds: string[], apiKey: string): Pr
 }
 
 /** Supabase: kayıtlı playlist summary listesini getirir */
-export async function listSavedPlaylists(): Promise<SavedPlaylist[]> {
-  const { data, error } = await supabase
+export async function listSavedPlaylists(client: SupabaseClient): Promise<SavedPlaylist[]> {
+  const { data, error } = await client
     .from('playlists')
     .select(
       `
@@ -150,7 +150,7 @@ export async function listSavedPlaylists(): Promise<SavedPlaylist[]> {
 }
 
 /** Supabase: müfredat + ders filtrasyonuyla öğretmen listesi (duplikasyonlar ayıklanır) */
-export async function listLessonTeachers(params: {
+export async function listLessonTeachers(client: SupabaseClient, params: {
   curriculumId: string
   lessonIds?: number[]
 }): Promise<LessonTeacher[]> {
@@ -158,7 +158,7 @@ export async function listLessonTeachers(params: {
   if (!curriculumId) return []
   if (lessonIds.length === 0) return []
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from('playlists')
     .select('teacher, section_id, lesson_id')
     .eq('curriculum_id', curriculumId)
@@ -188,8 +188,8 @@ export async function listLessonTeachers(params: {
 }
 
 /** Supabase: bir playlist’in kayıtlı videolarını getirir (prefill için) */
-export async function listPlaylistVideos(playlistId: string): Promise<YoutubeVideo[]> {
-  const { data, error } = await supabase
+export async function listPlaylistVideos(client: SupabaseClient, playlistId: string): Promise<YoutubeVideo[]> {
+  const { data, error } = await client
     .from('playlist_videos')
     .select('*')
     .eq('playlist_id', playlistId)
@@ -209,8 +209,8 @@ export async function listPlaylistVideos(playlistId: string): Promise<YoutubeVid
 }
 
 /** Prefill: Supabase’te olan kayıtlarla YouTube’tan gelenleri birleştir */
-export async function prefillFromSupabase(playlistId: string, fresh: YoutubeVideo[]): Promise<YoutubeVideo[]> {
-  const existing = await listPlaylistVideos(playlistId)
+export async function prefillFromSupabase(client: SupabaseClient, playlistId: string, fresh: YoutubeVideo[]): Promise<YoutubeVideo[]> {
+  const existing = await listPlaylistVideos(client, playlistId)
   const byId = new Map(fresh.map(v => [v.id, v]))
   for (const ex of existing) {
     const hit = byId.get(ex.id)
@@ -225,7 +225,7 @@ export async function prefillFromSupabase(playlistId: string, fresh: YoutubeVide
 }
 
 /** Supabase: videoları upsert eder ve playlist özetini günceller */
-export async function savePlaylistBundle(params: {
+export async function savePlaylistBundle(client: SupabaseClient, params: {
   playlistId: string
   teacher: string
   curriculumId?: string | null
@@ -252,7 +252,7 @@ export async function savePlaylistBundle(params: {
     summary.section_id = typeof sectionId === 'number' ? sectionId : null
     summary.lesson_id = typeof lessonId === 'number' ? lessonId : null
 
-    const { error } = await supabase
+    const { error } = await client
       .from('playlists')
       .upsert(summary)
 
@@ -277,7 +277,7 @@ export async function savePlaylistBundle(params: {
 
       if (!missing.length) throw error
 
-      const { error: fallbackError } = await supabase.from('playlists').upsert(fallback)
+      const { error: fallbackError } = await client.from('playlists').upsert(fallback)
       if (fallbackError) throw fallbackError
       console.warn(
         `[playlists] ${missing.join(', ')} alan(lar)ı Supabase şemasında bulunamadı, bu alan(lar) kaydedilmedi.`,
@@ -288,7 +288,7 @@ export async function savePlaylistBundle(params: {
 
   // 2) videos replace (delete all + insert new)
   // Mevcut videoları sil
-  const { error: delError } = await supabase
+  const { error: delError } = await client
     .from('playlist_videos')
     .delete()
     .eq('playlist_id', playlistId)
@@ -309,7 +309,7 @@ export async function savePlaylistBundle(params: {
   const CHUNK = 500
   for (let i = 0; i < rows.length; i += CHUNK) {
     const chunk = rows.slice(i, i + CHUNK)
-    const { error } = await supabase
+    const { error } = await client
       .from('playlist_videos')
       .insert(chunk)
     if (error) throw error

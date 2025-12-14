@@ -1,3 +1,4 @@
+// queries/useLessonTeachers.ts
 import { computed, unref, type ComputedRef, type Ref } from 'vue'
 import { listLessonTeachers, type LessonTeacher } from '../api/youtubePlaylists'
 import { qk } from './keys'
@@ -10,6 +11,7 @@ export function useLessonTeachers(
   curriculumId: MaybeReactive<string | null | undefined>,
   lessonIds: MaybeReactive<number[]>
 ) {
+  const client = useSupabaseClient()
   const cid = toVal(curriculumId)
   const lessons = toVal(lessonIds)
   
@@ -21,7 +23,7 @@ export function useLessonTeachers(
       key.value,
       () => {
           if (!cid.value || (lessons.value?.length ?? 0) === 0) return Promise.resolve([])
-          return listLessonTeachers({ curriculumId: cid.value!, lessonIds: lessons.value ?? [] })
+          return listLessonTeachers(client, { curriculumId: cid.value!, lessonIds: lessons.value ?? [] })
       },
       {
           watch: [cid, lessons],

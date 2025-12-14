@@ -1,4 +1,3 @@
-// src/types/studyPlans.ts
 export type DayKey =
     | 'monday' | 'tuesday' | 'wednesday' | 'thursday'
     | 'friday' | 'saturday' | 'sunday'
@@ -21,12 +20,12 @@ export interface StudyTask {
     curriculumId?: string | null
     sectionId?: number | string | null
     lessonId?: number | string | null
-    topicId: string // zorunlu
+    topicId: string
 }
 
 export interface StudyPlanResponse {
-    id?: string // Postgres UUID
-    weekStart: string // YYYY-MM-DD
+    id?: string
+    weekStart: string
     tasks: StudyTask[]
     stats: StudyPlanStats
 }

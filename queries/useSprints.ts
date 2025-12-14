@@ -1,4 +1,3 @@
-// src/queries/sprints.ts
 import { computed, unref, type Ref, type ComputedRef, ref } from 'vue'
 import { SprintsAPI, type SprintGenerateInput, type SprintGenerateResult, type SprintSummary } from '../api/sprints'
 import { qk } from './keys'
@@ -11,6 +10,7 @@ export function useGenerateSprint() {
     const isPending = ref(false)
     const error = ref<Error | null>(null)
     const data = ref<SprintGenerateResult | null>(null)
+    const client = useSupabaseClient()
 
     function reset() {
         error.value = null
@@ -22,7 +22,7 @@ export function useGenerateSprint() {
         isPending.value = true
         error.value = null
         try {
-            const res = await SprintsAPI.generate(payload)
+            const res = await SprintsAPI.generate(client, payload)
             data.value = res
             return res
         } catch (err: any) {
@@ -47,16 +47,16 @@ export function useGenerateSprint() {
 export function useUserSprints(userId: MaybeReactive<string | undefined>) {
     const uid = toVal(userId)
     const key = computed(() => qk.sprints.list(uid.value ?? '').join(':'))
+    const client = useSupabaseClient()
 
     const { data, pending, error, refresh } = useAsyncData<SprintSummary[]>(
         key.value,
         () => {
             if (!uid.value) return Promise.resolve([])
-            return SprintsAPI.listByUser(uid.value)
+            return SprintsAPI.listByUser(client, uid.value)
         },
         {
             watch: [uid],
-            // placeholderData: (prev) => prev
         }
     )
 
@@ -68,6 +68,7 @@ export function useDeleteSprint(userId: MaybeReactive<string | undefined>) {
     const isPending = ref(false)
     const error = ref<Error | null>(null)
     const variables = ref<string | null>(null)
+    const client = useSupabaseClient()
     
     async function mutateAsync(sprintId: string) {
         if (!uid.value) {
@@ -82,9 +83,8 @@ export function useDeleteSprint(userId: MaybeReactive<string | undefined>) {
         error.value = null
 
         try {
-            const res = await SprintsAPI.deleteById(uid.value, sprintId)
+            const res = await SprintsAPI.deleteById(client, uid.value, sprintId)
             
-            // Refresh cache
             const key = qk.sprints.list(uid.value).join(':')
             refreshNuxtData(key)
             

@@ -11,6 +11,7 @@ import { computed, type Ref, unref, isRef } from 'vue'
  */
 export function useProfile(userId?: string | Ref<string | null> | null) {
     const auth = useAuthStore()
+    const client = useSupabaseClient()
 
     // userId parametresi ref de olabilir string de; hepsini tek bir computed'ta topladık
     const uidRef = computed<string | null>(() => {
@@ -27,7 +28,7 @@ export function useProfile(userId?: string | Ref<string | null> | null) {
         async () => {
             const uid = uidRef.value
             if (!uid) return null
-            return ProfileAPI.fetchByUserId(uid)
+            return ProfileAPI.fetchByUserId(client, uid)
         },
         {
             watch: [uidRef],
@@ -45,7 +46,7 @@ export function useProfile(userId?: string | Ref<string | null> | null) {
         if (!uid) throw new Error('Kullanıcı yok')
         
         try {
-            const res = await ProfileAPI.updateBasics(uid, payload)
+            const res = await ProfileAPI.updateBasics(client, uid, payload)
             // Cache güncelle
             refreshNuxtData(key.value)
             options?.onSuccess?.(res)
@@ -61,7 +62,7 @@ export function useProfile(userId?: string | Ref<string | null> | null) {
         if (!uid) throw new Error('Kullanici yok')
 
         try {
-            const res = await ProfileAPI.updateCustomerInfo(uid, payload)
+            const res = await ProfileAPI.updateCustomerInfo(client, uid, payload)
             refreshNuxtData(key.value)
             options?.onSuccess?.(res)
             return res
@@ -79,7 +80,7 @@ export function useProfile(userId?: string | Ref<string | null> | null) {
         if (!normalized) throw new Error("Gecerli mufredat ID gerekli")
         
         try {
-            const res = await ProfileAPI.updatePreferred(uid, normalized)
+            const res = await ProfileAPI.updatePreferred(client, uid, normalized)
             refreshNuxtData(key.value)
             if (uidRef.value && uidRef.value === auth.userId) {
                 auth.$patch({ preferredCurriculumId: res.preferred_curriculum_id ?? null })
@@ -105,7 +106,7 @@ export function useProfile(userId?: string | Ref<string | null> | null) {
         if (!uid) throw new Error('Kullanıcı yok')
 
         try {
-            const res = await ProfileAPI.updateAi(uid, payload)
+            const res = await ProfileAPI.updateAi(client, uid, payload)
             refreshNuxtData(key.value)
             options?.onSuccess?.(res)
             return res

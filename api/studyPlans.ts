@@ -1,5 +1,5 @@
 // src/api/studyPlans.ts
-import { supabase } from '../lib/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type DayKey = 'monday'|'tuesday'|'wednesday'|'thursday'|'friday'|'saturday'|'sunday'
 
@@ -102,25 +102,22 @@ const transformDaily = (rows: any[]): Record<DayKey, { total: number; completed:
 
 export const StudyPlansAPI = {
     /** plan + tasks + daily istatistiklerini tek seferde getir */
-    async getPlan(userId: string, weekStart: string): Promise<StudyPlanDTO> {
+    async getPlan(client: SupabaseClient, userId: string, weekStart: string): Promise<StudyPlanDTO> {
         try {
-            console.log('[StudyPlansAPI] getPlan call', { userId, weekStart })
             const planRes = await withTimeout(
-                supabase.from('study_plans').select('*').eq('user_id', userId).eq('week_start', weekStart).maybeSingle()
+                client.from('study_plans').select('*').eq('user_id', userId).eq('week_start', weekStart).maybeSingle()
             ) as any
             if (planRes.error) {
-                console.error('[StudyPlansAPI] plan fetch error', planRes.error)
                 throw planRes.error
             }
             const plan: StudyPlan | null = planRes.data ?? null
-            console.log('[StudyPlansAPI] found plan', plan)
 
             let tasks: StudyTask[] = []
             let dailyRows: DailyRow[] = []
             if (plan) {
                 const [tRes, dRes] = await Promise.all([
-                    withTimeout(supabase.from('study_plan_tasks').select('*').eq('plan_id', plan.id).order('created_at', { ascending: true })) as any,
-                    withTimeout(supabase.from('study_plan_daily_stats').select('*').eq('plan_id', plan.id)) as any
+                    withTimeout(client.from('study_plan_tasks').select('*').eq('plan_id', plan.id).order('created_at', { ascending: true })) as any,
+                    withTimeout(client.from('study_plan_daily_stats').select('*').eq('plan_id', plan.id)) as any
                 ])
                 if (tRes.error) throw tRes.error
                 if (dRes.error) throw dRes.error
@@ -129,13 +126,13 @@ export const StudyPlansAPI = {
             }
             return { plan, tasks, daily: transformDaily(dailyRows) }
         } catch (e) {
-             console.error('[StudyPlansAPI] getPlan exception', e)
              throw normErr(e) 
         }
     },
 
     /** upsert: plan + tasks + daily (append=true keeps existing, otherwise prunes extras) */
     async upsertPlan(
+        client: SupabaseClient,
         userId: string,
         weekStart: string,
         tasks: StudyTask[],
@@ -150,13 +147,13 @@ export const StudyPlansAPI = {
             let existingTasks: StudyTask[] = []
             if (append) {
                 const existingPlanRes = await withTimeout(
-                    supabase.from('study_plans').select('id').eq('user_id', userId).eq('week_start', weekStart).maybeSingle()
+                    client.from('study_plans').select('id').eq('user_id', userId).eq('week_start', weekStart).maybeSingle()
                 ) as any
                 if (existingPlanRes?.error) throw existingPlanRes.error
                 const existingPlanId = existingPlanRes?.data?.id as string | undefined
                 if (existingPlanId) {
                     const exTasksRes = await withTimeout(
-                        supabase.from('study_plan_tasks').select('*').eq('plan_id', existingPlanId)
+                        client.from('study_plan_tasks').select('*').eq('plan_id', existingPlanId)
                     ) as any
                     if (exTasksRes?.error) throw exTasksRes.error
                     existingTasks = (exTasksRes?.data ?? []).map(normalizeTask)
@@ -201,7 +198,7 @@ export const StudyPlansAPI = {
                 planPayload.sprint_id = opts.sprintId ?? null
             }
             const pRes = await withTimeout(
-                supabase.from('study_plans')
+                client.from('study_plans')
                     .upsert([planPayload], { onConflict: 'user_id,week_start' })
                     .select('*').single()
             ) as any
@@ -233,7 +230,7 @@ export const StudyPlansAPI = {
 
             if (sanitized.length) {
                 const tRes = await withTimeout(
-                    supabase.from('study_plan_tasks').upsert(sanitized, { onConflict: 'id' })
+                    client.from('study_plan_tasks').upsert(sanitized, { onConflict: 'id' })
                 ) as any
                 if (tRes.error) {
                     throw tRes.error
@@ -246,7 +243,7 @@ export const StudyPlansAPI = {
                 if (keepIds.length) {
                     const idsCsv = keepIds.map(i => `"${i}"`).join(',')
                     const delRes = await withTimeout(
-                        supabase.from('study_plan_tasks')
+                        client.from('study_plan_tasks')
                             .delete()
                             .eq('plan_id', planId)
                             .not('id', 'in', `(${idsCsv})`)
@@ -256,7 +253,7 @@ export const StudyPlansAPI = {
                     }
                 } else {
                     const delAll = await withTimeout(
-                        supabase.from('study_plan_tasks').delete().eq('plan_id', planId)
+                        client.from('study_plan_tasks').delete().eq('plan_id', planId)
                     ) as any
                     if (delAll.error) {
                         throw delAll.error
@@ -268,7 +265,7 @@ export const StudyPlansAPI = {
             const dailyRows = Object.entries(mergedDaily).map(([day, v]) => ({ plan_id: planId, day, total: v.total, completed: v.completed }))
             if (dailyRows.length) {
                 const dRes = await withTimeout(
-                    supabase.from('study_plan_daily_stats').upsert(dailyRows as any, { onConflict: 'plan_id,day' })
+                    client.from('study_plan_daily_stats').upsert(dailyRows as any, { onConflict: 'plan_id,day' })
                 ) as any
                 if (dRes.error) {
                     throw dRes.error
@@ -282,14 +279,14 @@ export const StudyPlansAPI = {
     },
 
     /** seçili haftanın konu süreleri — saniye cinsinden */
-    async topicDurationsForWeek(userId: string, weekStart: string): Promise<Record<string, number>> {
+    async topicDurationsForWeek(client: SupabaseClient, userId: string, weekStart: string): Promise<Record<string, number>> {
         try {
             const start = new Date(weekStart)
             const end = new Date(start); end.setDate(start.getDate() + 6)
             const to = end.toISOString().slice(0,10)
 
             const res = await withTimeout(
-                supabase.from('study_sessions')
+                client.from('study_sessions')
                     .select('topic_uuid, duration_minutes')
                     .eq('user_id', userId)
                     .gte('date', weekStart)

@@ -1,4 +1,5 @@
-import { supabase } from '../lib/supabase'
+// src/api/generalExamResults.ts
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeNet } from './examResults'
 
 export type GeneralExamDetailRow = {
@@ -96,7 +97,6 @@ const normalizeRow = (
             : computeNet(correct, wrong)
 
 
-
     return {
         code: codeRaw || 'genel_sinav',
         name: nameRaw || 'Genel Sinav',
@@ -134,13 +134,14 @@ const normalizeDetail = (
 
 export const GeneralExamResultsAPI = {
     async listByDateRange(
+        client: SupabaseClient,
         userId: string,
         startISO: string,
         endISO: string,
         curriculumId?: string | null
     ): Promise<GeneralExamResult[]> {
         try {
-            let q = supabase
+            let q = client
                 .from('exam_result_general')
                 .select('*')
                 .eq('user_id', userId)
@@ -164,6 +165,7 @@ export const GeneralExamResultsAPI = {
     },
 
     async create(
+        client: SupabaseClient,
         userId: string,
         p: GeneralExamResultCreate
     ): Promise<GeneralExamResult> {
@@ -189,7 +191,7 @@ export const GeneralExamResultsAPI = {
             }
 
             const { data, error } = await timeout(
-                supabase
+                client
                     .from('exam_result_general')
                     .insert(row)
                     .select('*')

@@ -1,5 +1,5 @@
 // src/api/notifications.ts
-import { supabase } from '../lib/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type NotificationRow = {
   id: string
@@ -29,9 +29,9 @@ export type RealtimeUnsubscribe = () => void
 
 export const NotificationsAPI = {
   /* ========== READ ========== */
-  async listForUser(userId: string, opts?: { limit?: number }) {
+  async listForUser(client: SupabaseClient, userId: string, opts?: { limit?: number }) {
     const { data, error } = await timeout(
-      supabase.from('notifications')
+      client.from('notifications')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
@@ -41,9 +41,9 @@ export const NotificationsAPI = {
     return (data ?? []) as NotificationRow[]
   },
 
-  async fetchById(userId: string, id: string) {
+  async fetchById(client: SupabaseClient, userId: string, id: string) {
     const { data, error } = await timeout(
-      supabase.from('notifications')
+      client.from('notifications')
         .select('*')
         .eq('user_id', userId)
         .eq('id', id)
@@ -53,9 +53,9 @@ export const NotificationsAPI = {
     return data as NotificationRow
   },
 
-  async countUnread(userId: string) {
+  async countUnread(client: SupabaseClient, userId: string) {
     const { count, error } = await timeout(
-      supabase
+      client
         .from('notifications')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
@@ -66,7 +66,7 @@ export const NotificationsAPI = {
   },
 
   /* ========== WRITE ========== */
-  async create(row: {
+  async create(client: SupabaseClient, row: {
     user_id: string
     title: string
     body?: string | null
@@ -83,14 +83,16 @@ export const NotificationsAPI = {
       action_url: row.action_url ?? null,
     }
     const { data, error } = await timeout(
-      supabase.from('notifications').insert(payload).select('*').single()
+      client.from('notifications').insert(payload).select('*').single()
     )
     if (error) throw toErr(error)
     return data as NotificationRow
   },
 
   /** Çoklu insert (örn. Hoş geldiniz mesajları) */
-  async bulkInsert(rows: Array<{
+  async bulkInsert(
+    client: SupabaseClient,
+    rows: Array<{
     user_id: string
     title: string
     body?: string | null
@@ -108,38 +110,38 @@ export const NotificationsAPI = {
       action_url: r.action_url ?? null
     }))
     const { data, error } = await timeout(
-      supabase.from('notifications').insert(cleaned).select('*')
+      client.from('notifications').insert(cleaned).select('*')
     )
     if (error) throw toErr(error)
     return (data ?? []) as NotificationRow[]
   },
 
-  async markSeen(id: string) {
+  async markSeen(client: SupabaseClient, id: string) {
     const { error } = await timeout(
-      supabase.from('notifications').update({ seen_at: new Date().toISOString() }).eq('id', id)
+      client.from('notifications').update({ seen_at: new Date().toISOString() }).eq('id', id)
     )
     if (error) throw toErr(error)
   },
 
-  async markRead(id: string) {
+  async markRead(client: SupabaseClient, id: string) {
     const { error } = await timeout(
-      supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id)
+      client.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id)
     )
     if (error) throw toErr(error)
   },
 
-  async markManySeen(ids: string[]) {
+  async markManySeen(client: SupabaseClient, ids: string[]) {
     if (!ids.length) return
     const { error } = await timeout(
-      supabase.from('notifications').update({ seen_at: new Date().toISOString() }).in('id', ids)
+      client.from('notifications').update({ seen_at: new Date().toISOString() }).in('id', ids)
     )
     if (error) throw toErr(error)
   },
 
-  async markManyRead(ids: string[]) {
+  async markManyRead(client: SupabaseClient, ids: string[]) {
     if (!ids.length) return
     const { error } = await timeout(
-      supabase.from('notifications').update({ read_at: new Date().toISOString() }).in('id', ids)
+      client.from('notifications').update({ read_at: new Date().toISOString() }).in('id', ids)
     )
     if (error) throw toErr(error)
   },
@@ -150,8 +152,8 @@ export const NotificationsAPI = {
    * INSERT/UPDATE/DELETE olaylarında cb(trigger, row) çağrılır.
    * Geri dönüş: aboneliği kapatmak için unsubscribe().
    */
-  subscribeUser(userId: string, cb: (evt: 'INSERT'|'UPDATE'|'DELETE', row: any)=>void): RealtimeUnsubscribe {
-    const channel = supabase.channel(`notifications-${userId}`)
+  subscribeUser(client: SupabaseClient, userId: string, cb: (evt: 'INSERT'|'UPDATE'|'DELETE', row: any)=>void): RealtimeUnsubscribe {
+    const channel = client.channel(`notifications-${userId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
@@ -161,6 +163,6 @@ export const NotificationsAPI = {
         }
       )
       .subscribe()
-    return () => { try { supabase.removeChannel(channel) } catch { /* noop */ } }
+    return () => { try { client.removeChannel(channel) } catch { /* noop */ } }
   }
 }

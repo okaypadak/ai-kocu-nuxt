@@ -1,5 +1,5 @@
 // src/api/curriculum.ts
-import { supabase } from '../lib/supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { StudySessionsAPI } from './studySessions'
 
 /** ============ Types (timestamps YOK) ============ */
@@ -76,10 +76,10 @@ const mapTopic = (row: any): Topic => {
 /** ============ API ============ */
 export const CurriculumAPI = {
     /** ---- Curricula ---- */
-    async fetchAll(): Promise<Curriculum[]> {
+    async fetchAll(client: SupabaseClient): Promise<Curriculum[]> {
         try {
             const { data, error } = await withTimeout(
-                supabase.from('curricula').select('id,exam,version,notes').order('id')
+                client.from('curricula').select('id,exam,version,notes').order('id')
             )
             if (error) throw error
             return (data ?? []) as Curriculum[]
@@ -88,10 +88,10 @@ export const CurriculumAPI = {
         }
     },
 
-    async fetchById(id: string): Promise<Curriculum | null> {
+    async fetchById(client: SupabaseClient, id: string): Promise<Curriculum | null> {
         try {
             const { data, error } = await withTimeout(
-                supabase.from('curricula').select('id,exam,version,notes').eq('id', id).single()
+                client.from('curricula').select('id,exam,version,notes').eq('id', id).single()
             )
             if (error) throw error
             return (data ?? null) as Curriculum | null
@@ -101,17 +101,17 @@ export const CurriculumAPI = {
     },
 
     /** sections/lessons/topics sayıları — timestamps olmadan */
-    async fetchStats(curriculumId: string): Promise<{ sections: number; lessons: number; topics: number }> {
+    async fetchStats(client: SupabaseClient, curriculumId: string): Promise<{ sections: number; lessons: number; topics: number }> {
         try {
             // 1) Sections: sadece id listesi ve sayım
             const secIdsRes = await withTimeout(
-                supabase.from('curriculum_sections').select('id').eq('curriculum_id', curriculumId)
+                client.from('curriculum_sections').select('id').eq('curriculum_id', curriculumId)
             ) as any
             if (secIdsRes.error) throw secIdsRes.error
             const sectionIds: number[] = (secIdsRes.data ?? []).map((r: any) => r.id as number)
 
             const secCountRes = await withTimeout(
-                supabase
+                client
                     .from('curriculum_sections')
                     .select('id', { count: 'exact', head: true })
                     .eq('curriculum_id', curriculumId)
@@ -124,13 +124,13 @@ export const CurriculumAPI = {
             let lessonIds: number[] = []
             if (sectionIds.length) {
                 const lesIdsRes = await withTimeout(
-                    supabase.from('curriculum_lessons').select('id').in('section_id', sectionIds)
+                    client.from('curriculum_lessons').select('id').in('section_id', sectionIds)
                 ) as any
                 if (lesIdsRes.error) throw lesIdsRes.error
                 lessonIds = (lesIdsRes.data ?? []).map((r: any) => r.id as number)
 
                 const lesCountRes = await withTimeout(
-                    supabase
+                    client
                         .from('curriculum_lessons')
                         .select('id', { count: 'exact', head: true })
                         .in('section_id', sectionIds)
@@ -143,7 +143,7 @@ export const CurriculumAPI = {
             let topics = 0
             if (lessonIds.length) {
                 const topCountRes = await withTimeout(
-                    supabase
+                    client
                         .from('curriculum_topics')
                         .select('new_id', { count: 'exact', head: true })
                         .in('lesson_id', lessonIds)
@@ -159,10 +159,10 @@ export const CurriculumAPI = {
     },
 
     /** JSON -> DB upsert (admin gerektirir; RLS politikaları bunu yönetir) */
-    async upsertFromJson(id: string, payload: any): Promise<void> {
+    async upsertFromJson(client: SupabaseClient, id: string, payload: any): Promise<void> {
         try {
             const { error } = await withTimeout(
-                supabase.rpc('upsert_curriculum_json', { p_id: id, p_json: payload })
+                client.rpc('upsert_curriculum_json', { p_id: id, p_json: payload })
             )
             if (error) throw error
         } catch (e) {
@@ -171,10 +171,10 @@ export const CurriculumAPI = {
     },
 
     /** (opsiyonel) Admin silme */
-    async removeCurriculum(id: string): Promise<void> {
+    async removeCurriculum(client: SupabaseClient, id: string): Promise<void> {
         try {
             const { error } = await withTimeout(
-                supabase.from('curricula').delete().eq('id', id)
+                client.from('curricula').delete().eq('id', id)
             )
             if (error) throw error
         } catch (e) {
@@ -183,10 +183,10 @@ export const CurriculumAPI = {
     },
 
     /** Müfredat kaydet (insert veya update) */
-    async saveCurriculum(payload: Curriculum): Promise<Curriculum> {
+    async saveCurriculum(client: SupabaseClient, payload: Curriculum): Promise<Curriculum> {
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curricula')
                     .upsert({ ...payload, notes: payload.notes ?? null })
                     .select('id,exam,version,notes')
@@ -200,10 +200,10 @@ export const CurriculumAPI = {
     },
 
     /** ---- Sections yönetimi ---- */
-    async createSection(curriculumId: string, payload: { code: string; name: string }): Promise<Section> {
+    async createSection(client: SupabaseClient, curriculumId: string, payload: { code: string; name: string }): Promise<Section> {
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_sections')
                     .insert([{ curriculum_id: curriculumId, code: payload.code, name: payload.name }])
                     .select('id,curriculum_id,code,name')
@@ -216,10 +216,10 @@ export const CurriculumAPI = {
         }
     },
 
-    async updateSection(sectionId: number, payload: Partial<{ code: string; name: string }>): Promise<Section> {
+    async updateSection(client: SupabaseClient, sectionId: number, payload: Partial<{ code: string; name: string }>): Promise<Section> {
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_sections')
                     .update(payload)
                     .eq('id', sectionId)
@@ -233,10 +233,10 @@ export const CurriculumAPI = {
         }
     },
 
-    async deleteSection(sectionId: number): Promise<void> {
+    async deleteSection(client: SupabaseClient, sectionId: number): Promise<void> {
         try {
             const { error } = await withTimeout(
-                supabase.from('curriculum_sections').delete().eq('id', sectionId)
+                client.from('curriculum_sections').delete().eq('id', sectionId)
             )
             if (error) throw error
         } catch (e) {
@@ -245,10 +245,10 @@ export const CurriculumAPI = {
     },
 
     /** ---- Lessons yönetimi ---- */
-    async createLesson(sectionId: number, payload: { code: string; name: string }): Promise<Lesson> {
+    async createLesson(client: SupabaseClient, sectionId: number, payload: { code: string; name: string }): Promise<Lesson> {
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_lessons')
                     .insert([{ section_id: sectionId, code: payload.code, name: payload.name }])
                     .select('id,section_id,code,name')
@@ -261,10 +261,10 @@ export const CurriculumAPI = {
         }
     },
 
-    async updateLesson(lessonId: number, payload: Partial<{ code: string; name: string }>): Promise<Lesson> {
+    async updateLesson(client: SupabaseClient, lessonId: number, payload: Partial<{ code: string; name: string }>): Promise<Lesson> {
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_lessons')
                     .update(payload)
                     .eq('id', lessonId)
@@ -278,10 +278,10 @@ export const CurriculumAPI = {
         }
     },
 
-    async deleteLesson(lessonId: number): Promise<void> {
+    async deleteLesson(client: SupabaseClient, lessonId: number): Promise<void> {
         try {
             const { error } = await withTimeout(
-                supabase.from('curriculum_lessons').delete().eq('id', lessonId)
+                client.from('curriculum_lessons').delete().eq('id', lessonId)
             )
             if (error) throw error
         } catch (e) {
@@ -290,10 +290,10 @@ export const CurriculumAPI = {
     },
 
     /** ---- Topics yönetimi ---- */
-    async createTopic(lessonId: number, payload: { id: string; title: string; sort_order?: number | null }): Promise<Topic> {
+    async createTopic(client: SupabaseClient, lessonId: number, payload: { id: string; title: string; sort_order?: number | null }): Promise<Topic> {
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_topics')
                     .insert([{
                         lesson_id: lessonId,
@@ -311,10 +311,10 @@ export const CurriculumAPI = {
         }
     },
 
-    async updateTopic(topicId: string, payload: Partial<{ title: string; sort_order: number | null }>): Promise<Topic> {
+    async updateTopic(client: SupabaseClient, topicId: string, payload: Partial<{ title: string; sort_order: number | null }>): Promise<Topic> {
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_topics')
                     .update(payload)
                     .eq('new_id', topicId)
@@ -328,13 +328,17 @@ export const CurriculumAPI = {
         }
     },
 
-    async deleteTopic(topicId: string): Promise<void> {
+    async deleteTopic(client: SupabaseClient, topicId: string): Promise<void> {
         try {
             // Önce ilgili çalışma oturumlarını sil (cascade benzeri işlem)
-            await StudySessionsAPI.deleteByTopicId(topicId)
+            // Note: StudySessionsAPI MUST also be updated or handled here. 
+            // However, assuming StudySessionsAPI is a separate module that we will handle later.
+            // Wait, StudySessionsAPI is imported. We need to pass client to it too if it's refactored.
+            // For now, let's assume usage of StudySessionsAPI needs update here.
+            await StudySessionsAPI.deleteByTopicId(client, topicId)
             
             const { error } = await withTimeout(
-                supabase.from('curriculum_topics').delete().eq('new_id', topicId)
+                client.from('curriculum_topics').delete().eq('new_id', topicId)
             )
             if (error) throw error
         } catch (e) {
@@ -343,10 +347,10 @@ export const CurriculumAPI = {
     },
 
     /** ---- Sections ---- */
-    async fetchSectionsByCurriculumId(curriculumId: string): Promise<Section[]> {
+    async fetchSectionsByCurriculumId(client: SupabaseClient, curriculumId: string): Promise<Section[]> {
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_sections')
                     .select('id,curriculum_id,code,name')
                     .eq('curriculum_id', curriculumId)
@@ -359,10 +363,10 @@ export const CurriculumAPI = {
         }
     },
 
-    async fetchSectionByCode(curriculumId: string, sectionCode: string): Promise<Section | null> {
+    async fetchSectionByCode(client: SupabaseClient, curriculumId: string, sectionCode: string): Promise<Section | null> {
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_sections')
                     .select('id,curriculum_id,code,name')
                     .eq('curriculum_id', curriculumId)
@@ -377,10 +381,10 @@ export const CurriculumAPI = {
     },
 
     /** ---- Lessons ---- */
-    async fetchLessonsBySectionId(sectionId: number): Promise<Lesson[]> {
+    async fetchLessonsBySectionId(client: SupabaseClient, sectionId: number): Promise<Lesson[]> {
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_lessons')
                     .select('id,section_id,code,name')
                     .eq('section_id', sectionId)
@@ -393,12 +397,12 @@ export const CurriculumAPI = {
         }
     },
 
-    async fetchLessonsByIds(lessonIds: number[]): Promise<Lesson[]> {
+    async fetchLessonsByIds(client: SupabaseClient, lessonIds: number[]): Promise<Lesson[]> {
         if (!lessonIds?.length) return []
         try {
             const uniqueIds = Array.from(new Set(lessonIds))
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_lessons')
                     .select('id,section_id,code,name')
                     .in('id', uniqueIds)
@@ -410,21 +414,21 @@ export const CurriculumAPI = {
         }
     },
 
-    async fetchLessonsBySectionCode(curriculumId: string, sectionCode: string): Promise<Lesson[]> {
+    async fetchLessonsBySectionCode(client: SupabaseClient, curriculumId: string, sectionCode: string): Promise<Lesson[]> {
         try {
-            const section = await this.fetchSectionByCode(curriculumId, sectionCode)
+            const section = await this.fetchSectionByCode(client, curriculumId, sectionCode)
             if (!section) return []
-            return this.fetchLessonsBySectionId(section.id)
+            return this.fetchLessonsBySectionId(client, section.id)
         } catch (e) {
             throw normalizeError(e)
         }
     },
 
     /** ---- Topics ---- */
-    async fetchTopicsByLessonId(lessonId: number): Promise<Topic[]> {
+    async fetchTopicsByLessonId(client: SupabaseClient, lessonId: number): Promise<Topic[]> {
         try {
             const { data, error } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_topics')
                     .select('new_id,lesson_id,title,sort_order')
                     .eq('lesson_id', lessonId)
@@ -439,25 +443,26 @@ export const CurriculumAPI = {
     },
 
     async fetchTopicsByCodes(
+        client: SupabaseClient,
         curriculumId: string,
         sectionCode: string,
         lessonCode: string
     ): Promise<Topic[]> {
         try {
-            const section = await this.fetchSectionByCode(curriculumId, sectionCode)
+            const section = await this.fetchSectionByCode(client, curriculumId, sectionCode)
             if (!section) return []
-            const lessons = await this.fetchLessonsBySectionId(section.id)
+            const lessons = await this.fetchLessonsBySectionId(client, section.id)
             const lesson = lessons.find((l) => l.code === lessonCode)
             if (!lesson) return []
-            return this.fetchTopicsByLessonId(lesson.id)
+            return this.fetchTopicsByLessonId(client, lesson.id)
         } catch (e) {
             throw normalizeError(e)
         }
     },
 
-    async findTopicById(topicId: string): Promise<Topic | null> {
+    async findTopicById(client: SupabaseClient, topicId: string): Promise<Topic | null> {
         try {
-            const query = supabase
+            const query = client
                 .from('curriculum_topics')
                 .select('new_id,lesson_id,title,sort_order')
                 .eq('new_id', topicId)
@@ -472,10 +477,10 @@ export const CurriculumAPI = {
     },
 
     /** basit arama (title ILIKE) — curriculum filtresi opsiyonel */
-    async searchTopics(q: string, opts?: { curriculumId?: string; limit?: number }): Promise<Topic[]> {
+    async searchTopics(client: SupabaseClient, q: string, opts?: { curriculumId?: string; limit?: number }): Promise<Topic[]> {
         try {
             const limit = opts?.limit ?? 50
-            const base = supabase
+            const base = client
                 .from('curriculum_topics')
                 .select(
                     `
@@ -505,16 +510,16 @@ export const CurriculumAPI = {
     },
 
     /** ---- Tree (curriculum -> sections -> lessons -> topics) ---- */
-    async fetchTree(curriculumId: string): Promise<CurriculumTree> {
+    async fetchTree(client: SupabaseClient, curriculumId: string): Promise<CurriculumTree> {
         try {
             const { data: cur, error: curErr } = await withTimeout(
-                supabase.from('curricula').select('id,exam,version,notes').eq('id', curriculumId).single()
+                client.from('curricula').select('id,exam,version,notes').eq('id', curriculumId).single()
             )
             if (curErr) throw curErr
             if (!cur) throw new CurriculumError('Müfredat bulunamadı', 'NOT_FOUND')
 
             const { data: sections, error: secErr } = await withTimeout(
-                supabase
+                client
                     .from('curriculum_sections')
                     .select(
                         `

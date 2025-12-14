@@ -1,10 +1,20 @@
 import { defineEventHandler, readBody, setResponseStatus } from 'h3'
+import { serverSupabaseClient } from '#supabase/server'
 import {
-  createSupabaseServerClient,
   refreshPremiumCookieOnce,
-  isMissingAuthSessionError,
+  createCookieAdapter,
   PREMIUM_COOKIE_NAME
-} from '~/server/utils/supabase'
+} from '~/server/utils/premium'
+
+// Helper: Supabase auth errors often don't have a specific type, checking message string
+export const isMissingAuthSessionError = (err?: { message?: string }) => {
+  const msg = err?.message?.toLowerCase() ?? ''
+  return (
+    msg.includes('auth session missing') ||
+    msg.includes('refresh token not found') ||
+    msg.includes('invalid refresh token')
+  )
+}
 
 // Helper to fetch additional profile fields
 async function getProfileExtra(supabase: any, userId: string | null) {
@@ -24,10 +34,12 @@ export default defineEventHandler(async (event) => {
   const method = event.node.req.method ?? 'GET'
   const rawParam = event.context.params?.path ?? ''
   const pathname = rawParam ? `/${rawParam}` : '/'
-  const { supabase, cookieAdapter } = await createSupabaseServerClient(event)
+  
+  // Standard Supabase Server Client
+  const supabase = await serverSupabaseClient(event)
+  const cookieAdapter = createCookieAdapter(event)
 
   const send = (status: number, body: any) => {
-    cookieAdapter.apply()
     setResponseStatus(event, status)
     return body
   }
@@ -81,8 +93,6 @@ export default defineEventHandler(async (event) => {
     if (error) return send(error.status ?? 400, { error: error.message })
 
     const userId = data.session?.user?.id ?? data.user?.id ?? null
-    // Signup usually creates a profile via triggers or client later, so it might be null initially.
-    // checking anyway.
     const [premiumEndsAt, profileExtra] = await Promise.all([
        data.session && userId ? refreshPremiumCookieOnce(supabase, cookieAdapter, { forceQuery: true, userId }) : Promise.resolve(null),
        getProfileExtra(supabase, userId)

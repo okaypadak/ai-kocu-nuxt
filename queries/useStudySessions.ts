@@ -1,3 +1,4 @@
+// src/queries/useStudySessions.ts
 import { computed, unref, type Ref, type ComputedRef, ref } from 'vue'
 import {
     StudySessionsAPI,
@@ -21,19 +22,17 @@ export function useStudySessions(
     range: DateRange | undefined,
     limit?: number
 ) {
+    const client = useSupabaseClient()
     const trigger = useStudySessionTrigger()
     
     // Key construction
-    // We append trigger to key to force refresh? 
-    // No, useAsyncData(key, fn, { watch: [trigger] }) handles it.
-    // The key should remain stable to allow caching.
     const key = computed(() => qk.studySessions.list(userId ?? '', range?.from ?? '', range?.to ?? '', String(limit ?? '')).join(':'))
 
     const { data, pending, error, refresh } = useAsyncData<StudySession[]>(
         key.value,
         () => {
             if (!userId || !range) return Promise.resolve([])
-            return StudySessionsAPI.listByRange(userId, range, { limit })
+            return StudySessionsAPI.listByRange(client, userId, range, { limit })
         },
         {
             watch: [trigger],
@@ -46,6 +45,7 @@ export function useStudySessions(
 
 /** Son N kayıt */
 export function useRecentStudySessions(userId: string | undefined, limit = 20) {
+    const client = useSupabaseClient()
     const trigger = useStudySessionTrigger()
     const key = computed(() => qk.studySessions.recent(userId ?? '', String(limit)).join(':'))
 
@@ -53,24 +53,18 @@ export function useRecentStudySessions(userId: string | undefined, limit = 20) {
         key.value,
         () => {
              if (!userId) return Promise.resolve([])
-             return StudySessionsAPI.listRecent(userId, limit)
+             return StudySessionsAPI.listRecent(client, userId, limit)
         },
         {
             watch: [trigger],
             default: () => []
         }
     )
-    // Note: returning direct useAsyncData result has data/pending/error/refresh etc.
-    // Adapting to match previous return signature { data, isLoading, error, refetch }
-    // Or just return the whole object and let consumer adapt?
-    // The previous code returned `useQuery` result.
-    // Consumers likely use destructuring: `const { data, isLoading } = useRecent...`
-    // useAsyncData return `pending` instead of `isLoading`.
-    // I should probably map it to keep compatibility.
 }
 
 /** Günlük toplam dakika + toplam (eski) */
 export function useStudySessionStats(userId: string | undefined, range: DateRange | undefined) {
+    const client = useSupabaseClient()
     const trigger = useStudySessionTrigger()
     const key = computed(() => qk.studySessions.stats(userId ?? '', range?.from ?? '', range?.to ?? '').join(':'))
 
@@ -78,7 +72,7 @@ export function useStudySessionStats(userId: string | undefined, range: DateRang
         key.value,
         () => {
             if (!userId || !range) return Promise.resolve({ totalMinutes: 0, daily: [] })
-            return StudySessionsAPI.statsByRange(userId, range)
+            return StudySessionsAPI.statsByRange(client, userId, range)
         },
         {
             watch: [trigger]
@@ -93,6 +87,7 @@ export function useTopTopics(
     range: DateRange | undefined,
     limit = 10
 ) {
+    const client = useSupabaseClient()
     const trigger = useStudySessionTrigger()
     const key = computed(() => qk.studySessions.topTopics(userId ?? '', range?.from ?? '', range?.to ?? '', String(limit)).join(':'))
 
@@ -100,7 +95,7 @@ export function useTopTopics(
         key.value,
         () => {
             if (!userId || !range) return Promise.resolve([])
-            return StudySessionsAPI.topTopics(userId, range, limit)
+            return StudySessionsAPI.topTopics(client, userId, range, limit)
         },
         {
            watch: [trigger],
@@ -112,6 +107,7 @@ export function useTopTopics(
 
 /** Haftalık topic süreleri (saniye) – UI için */
 export function useWeeklyTopicSeconds(userId: string | undefined, weekStartISO: string | undefined) {
+    const client = useSupabaseClient()
     const trigger = useStudySessionTrigger()
     const key = computed(() => qk.studyPlan.topicSeconds(userId ?? '', weekStartISO ?? '').join(':'))
 
@@ -119,7 +115,7 @@ export function useWeeklyTopicSeconds(userId: string | undefined, weekStartISO: 
         key.value,
         () => {
              if (!userId || !weekStartISO) return Promise.resolve({})
-             return StudySessionsAPI.totalsByTopicForWeekSeconds(userId, weekStartISO)
+             return StudySessionsAPI.totalsByTopicForWeekSeconds(client, userId, weekStartISO)
         },
         {
             watch: [trigger]
@@ -133,6 +129,7 @@ export function useDailySummary(
     userId: MaybeReactive<string | undefined>,
     range: MaybeReactive<DateRange | undefined>
 ) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const rg  = toVal(range)
     const trigger = useStudySessionTrigger()
@@ -143,7 +140,7 @@ export function useDailySummary(
         key.value,
         () => {
             if (!uid.value || !rg.value) return Promise.resolve([])
-            return StudySessionsAPI.dailySummaryByRange(uid.value, rg.value)
+            return StudySessionsAPI.dailySummaryByRange(client, uid.value, rg.value)
         },
         {
             watch: [trigger, uid, rg],
@@ -159,6 +156,7 @@ export function useSessionsByDate(
     dateISO: MaybeReactive<string | undefined>,
     opts?: { limit?: number; order?: 'asc' | 'desc' }
 ) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const dt  = toVal(dateISO)
     const trigger = useStudySessionTrigger()
@@ -169,7 +167,7 @@ export function useSessionsByDate(
         key.value,
         () => {
              if (!uid.value || !dt.value) return Promise.resolve([])
-             return StudySessionsAPI.listByDate(uid.value, dt.value, opts)
+             return StudySessionsAPI.listByDate(client, uid.value, dt.value, opts)
         },
         {
             watch: [trigger, uid, dt],
@@ -181,13 +179,14 @@ export function useSessionsByDate(
 
 /** Mutations */
 export function useCreateStudySession(userId: MaybeReactive<string | undefined>) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const trigger = useStudySessionTrigger()
 
     async function mutateAsync(payload: SessionCreate) {
         const resolved = uid.value
         if (!resolved) throw new Error('Oturum açmanız gerekiyor.')
-        const res = await StudySessionsAPI.create(resolved, payload)
+        const res = await StudySessionsAPI.create(client, resolved, payload)
         trigger.value++ // Trigger invalidation
         return res
     }
@@ -201,17 +200,14 @@ export function useCreateStudySession(userId: MaybeReactive<string | undefined>)
 
 /** Reaktif userId + invalidations */
 export function useCreateStudySessionFromTimer(userId: MaybeReactive<string | undefined>) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const trigger = useStudySessionTrigger() // Invalidate sessions
-    // To invalidate studyPlan, we need access to its trigger if it exists, or use refreshNuxtData on shared keys?
-    // Ideally we should import useStudyPlanTrigger if we make it shared. 
-    // Or just use refreshNuxtData for known Plan keys?
-    // Let's assume we rely on trigger for self-domain, and maybe explicit generic refresh for others.
     
     async function mutateAsync(p: Omit<SessionCreate,'duration_minutes'|'date'> & { duration_seconds: number; date?: string }) {
         const resolved = uid.value
         if (!resolved) throw new Error('Oturum açmanız gerekiyor.')
-        const res = await StudySessionsAPI.createFromTimer(resolved, p)
+        const res = await StudySessionsAPI.createFromTimer(client, resolved, p)
         
         trigger.value++ // Study Sessions
         // Also invalidate Study Plans
@@ -229,10 +225,11 @@ export function useCreateStudySessionFromTimer(userId: MaybeReactive<string | un
 }
 
 export function useUpdateStudySession() {
+    const client = useSupabaseClient()
     const trigger = useStudySessionTrigger()
     
     async function mutateAsync(p: { id: string; patch: SessionUpdate }) {
-        const res = await StudySessionsAPI.update(p.id, p.patch)
+        const res = await StudySessionsAPI.update(client, p.id, p.patch)
         trigger.value++
         return res
     }
@@ -245,10 +242,11 @@ export function useUpdateStudySession() {
 }
 
 export function useDeleteStudySession() {
+    const client = useSupabaseClient()
     const trigger = useStudySessionTrigger()
     
     async function mutateAsync(id: string) {
-        const res = await StudySessionsAPI.remove(id)
+        const res = await StudySessionsAPI.remove(client, id)
         trigger.value++
         return res
     }

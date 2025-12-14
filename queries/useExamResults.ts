@@ -24,6 +24,7 @@ export function useRecentExamResults(
     topicId: MaybeReactive<string | null | undefined>,
     limit = 20
 ) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const tid = toVal(topicId)
     const trigger = useExamResultsTrigger()
@@ -40,11 +41,10 @@ export function useRecentExamResults(
         key.value,
         () => {
             if (!uid.value || !tid.value) return Promise.resolve([])
-            return ExamResultsAPI.listRecentByTopic(uid.value, tid.value, limit)
+            return ExamResultsAPI.listRecentByTopic(client, uid.value, tid.value, limit)
         },
         {
             watch: [trigger],
-            placeholderData: (p) => p,
         }
     )
     return { data, isLoading: pending, error, refetch: refresh }
@@ -56,6 +56,7 @@ export function useWeeklyExamResults(
     weekEndISO: MaybeReactive<string | undefined>,
     curriculumId: MaybeReactive<string | null | undefined>
 ) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const ws = toVal(weekStartISO)
     const we = toVal(weekEndISO)
@@ -76,6 +77,7 @@ export function useWeeklyExamResults(
         () => {
             if (!uid.value || !ws.value || !we.value) return Promise.resolve([])
             return ExamResultsAPI.listByDateRange(
+                client,
                 uid.value,
                 ws.value,
                 we.value,
@@ -84,7 +86,6 @@ export function useWeeklyExamResults(
         },
         {
             watch: [trigger],
-            placeholderData: (p) => p,
         }
     )
     return { data, isLoading: pending, error, refetch: refresh }
@@ -96,6 +97,7 @@ export function useWeeklyGeneralExamResults(
     weekEndISO: MaybeReactive<string | undefined>,
     curriculumId: MaybeReactive<string | null | undefined>
 ) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const ws = toVal(weekStartISO)
     const we = toVal(weekEndISO)
@@ -116,6 +118,7 @@ export function useWeeklyGeneralExamResults(
         () => {
             if (!uid.value || !ws.value || !we.value) return Promise.resolve([])
             return GeneralExamResultsAPI.listByDateRange(
+                client,
                 uid.value,
                 ws.value,
                 we.value,
@@ -124,7 +127,6 @@ export function useWeeklyGeneralExamResults(
         },
         {
             watch: [trigger],
-            placeholderData: (p) => p,
         }
     )
     return { data, isLoading: pending, error, refetch: refresh }
@@ -134,11 +136,12 @@ export function useWeeklyGeneralExamResults(
 export function useCreateExamResult(
     userId: MaybeReactive<string | undefined>
 ) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const trigger = useExamResultsTrigger()
 
     async function mutateAsync(payload: ExamResultCreate) {
-        const res = await ExamResultsAPI.create(uid.value!, payload)
+        const res = await ExamResultsAPI.create(client, uid.value!, payload)
         trigger.value++
         return res
     }
@@ -153,11 +156,12 @@ export function useCreateExamResult(
 export function useCreateGeneralExamResult(
     userId: MaybeReactive<string | undefined>
 ) {
+    const client = useSupabaseClient()
     const uid = toVal(userId)
     const trigger = useExamResultsTrigger()
 
     async function mutateAsync(payload: GeneralExamResultCreate) {
-        const res = await GeneralExamResultsAPI.create(uid.value!, payload)
+        const res = await GeneralExamResultsAPI.create(client, uid.value!, payload)
         trigger.value++
         return res
     }
