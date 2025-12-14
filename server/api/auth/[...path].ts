@@ -4,7 +4,7 @@ import {
   refreshPremiumCookieOnce,
   isMissingAuthSessionError,
   PREMIUM_COOKIE_NAME
-} from '~/server/utils/supabase-server'
+} from '~/server/utils/supabase'
 
 // Helper to fetch additional profile fields
 async function getProfileExtra(supabase: any, userId: string | null) {
@@ -24,7 +24,7 @@ export default defineEventHandler(async (event) => {
   const method = event.node.req.method ?? 'GET'
   const rawParam = event.context.params?.path ?? ''
   const pathname = rawParam ? `/${rawParam}` : '/'
-  const { supabase, cookieAdapter } = createSupabaseServerClient(event)
+  const { supabase, cookieAdapter } = await createSupabaseServerClient(event)
 
   const send = (status: number, body: any) => {
     cookieAdapter.apply()

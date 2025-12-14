@@ -4,7 +4,7 @@ import {
   createSupabaseServerClient,
   createSupabaseAdminClient,
   persistPremiumCookie
-} from '~/server/utils/supabase-server'
+} from '~/server/utils/supabase'
 import { PACKAGES } from '~/api/premium'
 
 const iyzipay = new Iyzipay({
@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
   const method = event.node.req.method ?? 'GET'
   const rawParam = event.context.params?.path ?? ''
   const pathname = rawParam ? `/${rawParam}` : '/'
-  const { supabase, cookieAdapter } = createSupabaseServerClient(event)
+  const { supabase, cookieAdapter } = await createSupabaseServerClient(event)
 
   const send = (status: number, body: any) => {
     cookieAdapter.apply()

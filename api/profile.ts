@@ -1,5 +1,5 @@
 // src/api/profile.ts
-import { supabase } from '../lib/supabase'
+import { resolveSupabaseClient } from '../utils/supabase-client'
 
 export type Role = 'student' | 'teacher' | 'admin'
 
@@ -68,7 +68,10 @@ const PROFILE_FIELDS =
     'ai_mode,ai_creativity,ai_inspiration,ai_reward_mode,ai_character,' +
     'ai_daily_plan_enabled,ai_weekly_report_enabled,ai_belgesel_mode,ai_prediction_enabled,premium_ends_at'
 
+const getSupabase = () => resolveSupabaseClient()
+
 async function pickAnyCurriculumId(): Promise<string | null> {
+    const supabase = getSupabase()
     const { data, error } = await supabase.from('curricula').select('id').order('id', { ascending: true }).limit(1)
     if (error) {
         console.warn('[profile] fallback curriculum lookup failed:', error.message)
@@ -80,6 +83,7 @@ async function pickAnyCurriculumId(): Promise<string | null> {
 export const ProfileAPI = {
     /** Tek satır bekler; yoksa null döner. `.maybeSingle()` + `.limit(1)` */
     async fetchByUserId(uid: string): Promise<Profile | null> {
+        const supabase = getSupabase()
         const { data, error } = await supabase
             .from('profiles')
             .select(PROFILE_FIELDS)
@@ -100,6 +104,7 @@ export const ProfileAPI = {
         fullname: string | null = null,
         preferredCurriculumId?: string | null
     ): Promise<Profile> {
+        const supabase = getSupabase()
         const { data: existing, error: existingError } = await supabase
             .from('profiles')
             .select(PROFILE_FIELDS)
@@ -160,6 +165,7 @@ export const ProfileAPI = {
         uid: string,
         payload: { fullname?: string | null; role?: Role }
     ): Promise<Profile> {
+        const supabase = getSupabase()
         const hasAny =
             Object.prototype.hasOwnProperty.call(payload, 'fullname') ||
             Object.prototype.hasOwnProperty.call(payload, 'role')
@@ -193,6 +199,7 @@ export const ProfileAPI = {
         const target = normalizePreferredCurriculumId(cid)
         if (!target) throw new Error('Gecersiz mufredat ID (UUID bekleniyor).')
 
+        const supabase = getSupabase()
         const { data, error } = await supabase
             .from('profiles')
             .update({ preferred_curriculum_id: target })
@@ -216,6 +223,7 @@ export const ProfileAPI = {
             customer_tax_number?: string | null
         }
     ): Promise<Profile> {
+        const supabase = getSupabase()
         const { data, error } = await supabase
             .from('profiles')
             .update({
@@ -246,6 +254,7 @@ export const ProfileAPI = {
             ai_prediction_enabled?: boolean | null
         }
     ): Promise<Profile> {
+        const supabase = getSupabase()
         const { data, error } = await supabase
             .from('profiles')
             .update({

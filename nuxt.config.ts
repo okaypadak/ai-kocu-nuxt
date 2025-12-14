@@ -1,6 +1,5 @@
 // nuxt.config.ts
 
-// Small helper to read the first defined env value among several aliases.
 const env = (...keys: string[]) => keys.map((k) => process.env[k]).find(Boolean)
 
 const SUPABASE_URL = env(
@@ -18,13 +17,6 @@ const SUPABASE_ANON_KEY = env(
   'VITE_SUPABASE_ANON_KEY'
 )
 
-const SUPABASE_SERVICE_ROLE_KEY = env(
-  'SUPABASE_SERVICE_ROLE_KEY',
-  'SUPABASE_SERVICE_KEY'
-)
-
-const YOUTUBE_API_KEY = env('NUXT_PUBLIC_YOUTUBE_API_KEY', 'YOUTUBE_API_KEY')
-
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
 
@@ -38,8 +30,8 @@ export default defineNuxtConfig({
     '@nuxt/scripts',
     '@nuxt/ui',
     '@unocss/nuxt',
-    'pinia-plugin-persistedstate/nuxt',
-    '@pinia/nuxt'
+    '@pinia/nuxt',
+    'pinia-plugin-persistedstate/nuxt'
   ],
 
   css: [
@@ -49,18 +41,17 @@ export default defineNuxtConfig({
   ],
 
   runtimeConfig: {
-    // SERVER ONLY
-    supabaseServiceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     iyzicoApiKey: process.env.IYZICO_API_KEY,
     iyzicoSecretKey: process.env.IYZICO_SECRET_KEY,
     iyzicoUri: process.env.IYZICO_URI,
     premiumCookieSecret: process.env.PREMIUM_COOKIE_SECRET,
 
-    // PUBLIC
+    // PUBLIC (client + server)
     public: {
       supabaseUrl: SUPABASE_URL,
       supabaseAnonKey: SUPABASE_ANON_KEY,
-      youtubeApiKey: YOUTUBE_API_KEY
+      youtubeApiKey: process.env.NUXT_PUBLIC_YOUTUBE_API_KEY
     }
   },
 
