@@ -25,10 +25,10 @@ export function useLessonTeachers(
       },
       {
           watch: [cid, lessons],
-          placeholderData: (prev) => prev
+
           // staleTime default behavior
       }
   )
 
-  return { data, isLoading: pending, error, refetch: refresh }
+  return { data, isLoading: pending, isFetching: pending, error, refetch: refresh }
 }

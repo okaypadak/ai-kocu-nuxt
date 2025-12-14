@@ -155,7 +155,6 @@ export function useSupportMessages(
       },
       {
           watch: [resolvedUserId, resolvedConversationId, conversationQueryKey],
-          placeholderData: (prev) => prev
       }
   )
 
@@ -176,7 +175,6 @@ export function useSupportInbox(limit: number = DEFAULT_INBOX_LIMIT) {
           // Nuxt doesn't have refetchInterval built-in useAsyncData.
           // We can use a watcher manually if needed, or SKIP interval for now (better for server cost).
           // Assuming user is fine with lack of interval or using realtime subscription instead.
-          placeholderData: (prev) => prev
       }
   )
 
@@ -192,30 +190,49 @@ export function useSupportInbox(limit: number = DEFAULT_INBOX_LIMIT) {
 }
 
 export function useInsertSupportMessage() {
-  async function mutateAsync(payload: InsertPayload) {
-      const res = await insertSupportMessage(payload)
-      
-      // Invalidate queries
-      // Root equivalent? Try to refresh known common inbox
-      refreshNuxtData(supportQk.inbox(DEFAULT_INBOX_LIMIT))
+  const isLoading = ref(false)
+  const isError = ref(false)
+  const error = ref<any>(null)
 
-      const keys = conversationKeysForId(payload.conversationId)
-      const invalidateForParticipant = (uid?: string | null) => {
-        if (!uid) return
-        for (const k of keys) {
-          refreshNuxtData(supportQk.messages(uid, k))
-        }
-      }
-      if (payload.receiverId) invalidateForParticipant(payload.receiverId)
-      if (payload.senderId) invalidateForParticipant(payload.senderId)
+  async function mutateAsync(payload: InsertPayload) {
+      isLoading.value = true
+      isError.value = false
+      error.value = null
       
-      return res
+      try {
+        const res = await insertSupportMessage(payload)
+        
+        // Invalidate queries
+        // Root equivalent? Try to refresh known common inbox
+        refreshNuxtData(supportQk.inbox(DEFAULT_INBOX_LIMIT))
+
+        const keys = conversationKeysForId(payload.conversationId)
+        const invalidateForParticipant = (uid?: string | null) => {
+          if (!uid) return
+          for (const k of keys) {
+            refreshNuxtData(supportQk.messages(uid, k))
+          }
+        }
+        if (payload.receiverId) invalidateForParticipant(payload.receiverId)
+        if (payload.senderId) invalidateForParticipant(payload.senderId)
+        
+        return res
+      } catch (err) {
+        isError.value = true
+        error.value = err
+        throw err
+      } finally {
+        isLoading.value = false
+      }
   }
 
   return {
     mutateAsync,
     mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
-    isLoading: ref(false)
+    isLoading,
+    isPending: isLoading,
+    isError,
+    error
   }
 }
 

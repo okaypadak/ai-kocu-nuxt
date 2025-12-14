@@ -4,48 +4,63 @@ import type { CookieSerializeOptions } from 'cookie'
 import cookie from 'cookie'
 import type { H3Event } from 'h3'
 import { parseCookies } from 'h3'
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { useRuntimeConfig } from '#imports'
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL
-const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-const PREMIUM_COOKIE_SECRET = process.env.PREMIUM_COOKIE_SECRET
+/* ------------------------------------------------------------------ */
+/* RUNTIME CONFIG                                                      */
+/* ------------------------------------------------------------------ */
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  throw new Error('Supabase URL ve anon anahtar .env ortamında tanımlı olmalı')
-}
+const getConfig = () => {
+  const config = useRuntimeConfig()
 
-if (!PREMIUM_COOKIE_SECRET) {
-  throw new Error('PREMIUM_COOKIE_SECRET env var is required for signing the premium cookie')
+  const SUPABASE_URL = config.public.supabaseUrl
+  const SUPABASE_ANON_KEY = config.public.supabaseAnonKey
+  const SUPABASE_SERVICE_ROLE_KEY = config.supabaseServiceRoleKey
+  const PREMIUM_COOKIE_SECRET = config.premiumCookieSecret
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error('Supabase public config eksik')
+  }
+
+  if (!PREMIUM_COOKIE_SECRET) {
+    throw new Error('PREMIUM_COOKIE_SECRET eksik')
+  }
+
+  return {
+    SUPABASE_URL,
+    SUPABASE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY,
+    PREMIUM_COOKIE_SECRET
+  }
 }
 
 const isProd = process.env.NODE_ENV === 'production'
 
-export const PREMIUM_COOKIE_NAME = isProd ? '__Host-premium_status' : 'premium_status'
+export const PREMIUM_COOKIE_NAME = isProd
+  ? '__Host-premium_status'
+  : 'premium_status'
+
 const PREMIUM_COOKIE_VERSION = 'v1'
 
+/* ------------------------------------------------------------------ */
+/* COOKIE ADAPTER                                                      */
+/* ------------------------------------------------------------------ */
+
 const resolveCookieDomain = (event: H3Event) => {
-  const hostHeader = event.node.req.headers.host
-  const host = hostHeader?.split(':')?.[0]
-  if (!host) return undefined
-  if (host === 'localhost' || host === '127.0.0.1') return undefined
+  const host = event.node.req.headers.host?.split(':')[0]
+  if (!host || host === 'localhost' || host === '127.0.0.1') return undefined
   return host
 }
-
-const isLocalhost = (host: string) => host === 'localhost' || host === '127.0.0.1'
 
 const shouldUseSecureCookies = (event: H3Event) => {
   const forced = process.env.FORCE_SECURE_COOKIES
   if (forced === 'true') return true
   if (forced === 'false') return false
 
-  const host = event.node.req.headers.host?.split(':')?.[0]?.toLowerCase() ?? ''
-  if (host && !isLocalhost(host)) return true
+  const proto = String(event.node.req.headers['x-forwarded-proto'] || '')
+  if (proto === 'https') return true
 
-  const forwardedProto = `${event.node.req.headers['x-forwarded-proto'] || ''}`.toLowerCase()
-  if (forwardedProto === 'https') return true
-
-  // @ts-expect-error - Node req type union (Nitro provides encrypted flag when TLS terminates upstream)
+  // @ts-expect-error Nitro TLS flag
   return event.node.req.socket?.encrypted === true
 }
 
@@ -57,66 +72,57 @@ type CookieAdapter = {
 }
 
 const createCookieAdapter = (event: H3Event): CookieAdapter => {
-  const cookiesFromRequest = parseCookies(event)
+  const cookies = parseCookies(event)
   const jar = new Map<string, string>()
-  const secureCookies = shouldUseSecureCookies(event)
-  const domain = isProd ? undefined : resolveCookieDomain(event)
+  const secure = shouldUseSecureCookies(event)
+  const domain = !isProd ? resolveCookieDomain(event) : undefined
 
-  const baseOptions: CookieSerializeOptions = {
+  const base: CookieSerializeOptions = {
     httpOnly: true,
-    sameSite: secureCookies ? 'none' : 'lax',
-    secure: secureCookies,
-    path: '/'
+    secure,
+    sameSite: secure ? 'none' : 'lax',
+    path: '/',
+    domain
   }
 
-  if (!isProd && domain) {
-    baseOptions.domain = domain
-  }
-
-  const setCookieString = (name: string, value: string, options?: CookieSerializeOptions) => {
-    jar.set(
-      name,
-      cookie.serialize(name, value, {
-        ...baseOptions,
-        ...options
-      })
-    )
+  const setCookie = (name: string, value: string, options?: CookieSerializeOptions) => {
+    jar.set(name, cookie.serialize(name, value, { ...base, ...options }))
   }
 
   return {
-    get: (name: string) => cookiesFromRequest[name],
-    set: (name, value, options) => setCookieString(name, value, options),
+    get: (name) => cookies[name],
+    set: setCookie,
     remove: (name, options) =>
-      setCookieString(name, '', {
-        ...options,
-        expires: new Date(0)
-      }),
+      setCookie(name, '', { ...options, expires: new Date(0) }),
     apply: () => {
-      if (jar.size === 0) return
+      if (!jar.size) return
       const existing = event.node.res.getHeader('set-cookie')
-      const serialized = Array.from(jar.values())
-      if (!existing) {
-        event.node.res.setHeader('set-cookie', serialized)
-        return
-      }
-
-      if (Array.isArray(existing)) {
-        event.node.res.setHeader('set-cookie', existing.concat(serialized))
-      } else {
-        event.node.res.setHeader('set-cookie', [existing, ...serialized])
-      }
+      const values = [...jar.values()]
+      event.node.res.setHeader(
+        'set-cookie',
+        existing
+          ? Array.isArray(existing)
+            ? existing.concat(values)
+            : [existing, ...values]
+          : values
+      )
     }
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* SUPABASE CLIENTS                                                    */
+/* ------------------------------------------------------------------ */
+
 export const createSupabaseServerClient = (event: H3Event) => {
+  const { SUPABASE_URL, SUPABASE_ANON_KEY } = getConfig()
   const cookieAdapter = createCookieAdapter(event)
 
-  const supabase = createServerClient(SUPABASE_URL!, SUPABASE_ANON_KEY!, {
+  const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {
-      get: (name) => cookieAdapter.get(name),
-      set: (name, value, options) => cookieAdapter.set(name, value, options),
-      remove: (name, options) => cookieAdapter.remove(name, options)
+      get: cookieAdapter.get,
+      set: cookieAdapter.set,
+      remove: cookieAdapter.remove
     }
   })
 
@@ -124,78 +130,118 @@ export const createSupabaseServerClient = (event: H3Event) => {
 }
 
 export const createSupabaseAdminClient = () => {
+  const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = getConfig()
   if (!SUPABASE_SERVICE_ROLE_KEY) return null
-  return createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
+
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false }
   })
 }
 
-const base64UrlEncode = (buf: Buffer) =>
-  buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+/* ------------------------------------------------------------------ */
+/* EDGE-SAFE CRYPTO                                                    */
+/* ------------------------------------------------------------------ */
+
+const base64UrlEncode = (bytes: Uint8Array) =>
+  btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
 
 const base64UrlDecode = (value: string) => {
   const padded = value.padEnd(value.length + ((4 - (value.length % 4)) % 4), '=')
-  return Buffer.from(padded.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+  const bin = atob(padded.replace(/-/g, '+').replace(/_/g, '/'))
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0))
 }
 
-const signPremiumPayload = (payload: string) =>
-  base64UrlEncode(createHmac('sha256', PREMIUM_COOKIE_SECRET!).update(payload).digest())
+const signPremiumPayload = async (payload: string) => {
+  const { PREMIUM_COOKIE_SECRET } = getConfig()
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(PREMIUM_COOKIE_SECRET),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+
+  const sig = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(payload)
+  )
+
+  return base64UrlEncode(new Uint8Array(sig))
+}
+
+/* ------------------------------------------------------------------ */
+/* PREMIUM LOGIC                                                       */
+/* ------------------------------------------------------------------ */
 
 export const normalizePremiumEndsAt = (value?: string | null) => {
   if (!value) return null
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return null
-  if (parsed.getTime() <= Date.now()) return null
-  return parsed.toISOString()
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime()) || d.getTime() <= Date.now()) return null
+  return d.toISOString()
 }
 
-export const serializePremiumCookie = (userId?: string | null, premiumEndsAtIso?: string | null) => {
-  const normalized = normalizePremiumEndsAt(premiumEndsAtIso)
+export const serializePremiumCookie = async (
+  userId?: string | null,
+  endsAt?: string | null
+) => {
+  const normalized = normalizePremiumEndsAt(endsAt)
   if (!normalized || !userId) return null
+
   const payload = `${userId}|${normalized}`
-  const signature = signPremiumPayload(payload)
-  return `${PREMIUM_COOKIE_VERSION}:${payload}:${signature}`
+  const sig = await signPremiumPayload(payload)
+
+  return `${PREMIUM_COOKIE_VERSION}:${payload}:${sig}`
 }
 
-export const readPremiumFromCookie = (cookieAdapter: CookieAdapter, userId?: string | null) => {
+export const readPremiumFromCookie = async (
+  cookieAdapter: CookieAdapter,
+  userId?: string | null
+) => {
   if (!userId) return null
   const raw = cookieAdapter.get(PREMIUM_COOKIE_NAME)
-  if (!raw || typeof raw !== 'string') return null
+  if (!raw) return null
 
-  const [version, payload, signature] = raw.split(':')
-  if (version !== PREMIUM_COOKIE_VERSION || !payload || !signature) return null
+  const [version, payload, sig] = raw.split(':')
+  if (version !== PREMIUM_COOKIE_VERSION) return null
 
-  const [cookieUserId, expiresIso] = payload.split('|')
-  if (!cookieUserId || !expiresIso || cookieUserId !== userId) return null
+  const [uid, expires] = payload.split('|')
+  if (uid !== userId) return null
 
-  const normalized = normalizePremiumEndsAt(expiresIso)
+  const normalized = normalizePremiumEndsAt(expires)
   if (!normalized) return null
 
-  const expectedSignature = signPremiumPayload(payload)
-  const providedSigBuf = base64UrlDecode(signature)
-  const expectedSigBuf = base64UrlDecode(expectedSignature)
-  if (providedSigBuf.length !== expectedSigBuf.length) return null
-  if (!timingSafeEqual(providedSigBuf, expectedSigBuf)) return null
+  const expected = base64UrlDecode(await signPremiumPayload(payload))
+  const provided = base64UrlDecode(sig)
+
+  if (expected.length !== provided.length) return null
+  if (!crypto.timingSafeEqual(expected, provided)) return null
 
   return normalized
 }
 
-export const persistPremiumCookie = (
+export const persistPremiumCookie = async (
   cookieAdapter: CookieAdapter,
   userId?: string | null,
-  premiumEndsAtIso?: string | null
+  endsAt?: string | null
 ) => {
-  const serialized = serializePremiumCookie(userId, premiumEndsAtIso)
+  const serialized = await serializePremiumCookie(userId, endsAt)
   if (!serialized) {
-    cookieAdapter.remove(PREMIUM_COOKIE_NAME, { path: '/' })
+    cookieAdapter.remove(PREMIUM_COOKIE_NAME)
     return null
   }
-  const normalized = normalizePremiumEndsAt(premiumEndsAtIso)
+
+  const normalized = normalizePremiumEndsAt(endsAt)
   if (!normalized) return null
-  cookieAdapter.set(PREMIUM_COOKIE_NAME, serialized, { path: '/', expires: new Date(normalized) })
+
+  cookieAdapter.set(PREMIUM_COOKIE_NAME, serialized, {
+    expires: new Date(normalized)
+  })
+
   return normalized
 }
 
@@ -205,44 +251,29 @@ export const refreshPremiumCookieOnce = async (
   { forceQuery = false, userId }: { forceQuery?: boolean; userId?: string | null } = {}
 ) => {
   if (!userId) {
-    cookieAdapter.remove(PREMIUM_COOKIE_NAME, { path: '/' })
+    cookieAdapter.remove(PREMIUM_COOKIE_NAME)
     return null
   }
 
-  const existing = forceQuery ? null : readPremiumFromCookie(cookieAdapter, userId)
-  if (existing) return existing
-
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('premium_ends_at')
-      .eq('user_id', userId)
-      .limit(1)
-      .maybeSingle()
-
-    if (error) throw error
-
-    const premiumEndsAt = normalizePremiumEndsAt(data?.premium_ends_at as string | null | undefined)
-    if (!premiumEndsAt) {
-      cookieAdapter.remove(PREMIUM_COOKIE_NAME, { path: '/' })
-      return null
-    }
-
-    return persistPremiumCookie(cookieAdapter, userId, premiumEndsAt)
-  } catch (err: any) {
-    console.warn('[auth] premium cookie sync skipped:', err?.message ?? err)
-    cookieAdapter.remove(PREMIUM_COOKIE_NAME, { path: '/' })
-    return null
+  if (!forceQuery) {
+    const cached = await readPremiumFromCookie(cookieAdapter, userId)
+    if (cached) return cached
   }
+
+  const { data } = await supabase
+    .from('profiles')
+    .select('premium_ends_at')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  return persistPremiumCookie(cookieAdapter, userId, data?.premium_ends_at)
 }
 
 export const isMissingAuthSessionError = (err?: { message?: string }) => {
-  const msg = typeof err?.message === 'string' ? err.message.toLowerCase() : ''
+  const msg = err?.message?.toLowerCase() ?? ''
   return (
     msg.includes('auth session missing') ||
     msg.includes('refresh token not found') ||
     msg.includes('invalid refresh token')
   )
 }
-
-export { SUPABASE_URL, SUPABASE_ANON_KEY }

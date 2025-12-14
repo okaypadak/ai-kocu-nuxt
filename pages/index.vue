@@ -1,6 +1,7 @@
 <script setup lang="ts">
+await navigateTo('/login')
 </script>
 
 <template>
-  <div class="hidden"></div>
+  <div></div>
 </template>

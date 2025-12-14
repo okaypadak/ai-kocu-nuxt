@@ -172,7 +172,7 @@ export function useNotificationsList(userId: MaybeRef<string | undefined>, opts?
       },
       {
           watch: [resolvedUserId, resolvedOpts, limit, onlyUnread, cursor, searchTitle, searchBody, onlyAi],
-          placeholderData: (prev) => prev
+
       }
   )
 
@@ -191,7 +191,7 @@ export function useUnreadCount(userId: MaybeRef<string | undefined>) {
       },
       {
           watch: [resolvedUserId],
-          placeholderData: (prev) => prev ?? 0
+
       }
   )
   
@@ -210,7 +210,7 @@ export function useNotificationById(id: MaybeRef<string | undefined>) {
       },
       {
           watch: [resolvedId],
-          placeholderData: (prev) => prev
+
       }
   )
   
@@ -295,7 +295,7 @@ export function useMarkAllAsRead(userId: MaybeRef<string | undefined>) {
 
   return {
     mutateAsync,
-    mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
+    mutate: (p: any, opts?: any) => mutateAsync().then(opts?.onSuccess).catch(opts?.onError),
     isLoading: ref(false)
   }
 }

@@ -8,14 +8,39 @@ const toVal = <T,>(src: MaybeReactive<T>) =>
     typeof src === 'function' ? computed(() => (src as any)()) : computed(() => unref(src as any))
 
 export function useGenerateSprint() {
+    const isPending = ref(false)
+    const error = ref<Error | null>(null)
+    const data = ref<SprintGenerateResult | null>(null)
+
+    function reset() {
+        error.value = null
+        data.value = null
+        isPending.value = false
+    }
+
     async function mutateAsync(payload: SprintGenerateInput) {
-        return SprintsAPI.generate(payload)
+        isPending.value = true
+        error.value = null
+        try {
+            const res = await SprintsAPI.generate(payload)
+            data.value = res
+            return res
+        } catch (err: any) {
+            error.value = err
+            throw err
+        } finally {
+            isPending.value = false
+        }
     }
 
     return {
         mutateAsync,
         mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
-        isLoading: ref(false)
+        isPending,
+        isLoading: isPending,
+        error,
+        data,
+        reset
     }
 }
 
@@ -35,11 +60,14 @@ export function useUserSprints(userId: MaybeReactive<string | undefined>) {
         }
     )
 
-    return { data, isLoading: pending, error, refetch: refresh }
+    return { data, isLoading: pending, isFetching: pending, error, refetch: refresh }
 }
 
 export function useDeleteSprint(userId: MaybeReactive<string | undefined>) {
     const uid = toVal(userId)
+    const isPending = ref(false)
+    const error = ref<Error | null>(null)
+    const variables = ref<string | null>(null)
     
     async function mutateAsync(sprintId: string) {
         if (!uid.value) {
@@ -48,18 +76,34 @@ export function useDeleteSprint(userId: MaybeReactive<string | undefined>) {
         if (!sprintId) {
             throw new Error('Koşu bulunamadı')
         }
-        const res = await SprintsAPI.deleteById(uid.value, sprintId)
         
-        // Refresh cache
-        const key = qk.sprints.list(uid.value).join(':')
-        refreshNuxtData(key)
-        
-        return res
+        isPending.value = true
+        variables.value = sprintId
+        error.value = null
+
+        try {
+            const res = await SprintsAPI.deleteById(uid.value, sprintId)
+            
+            // Refresh cache
+            const key = qk.sprints.list(uid.value).join(':')
+            refreshNuxtData(key)
+            
+            return res
+        } catch (err: any) {
+            error.value = err
+            throw err
+        } finally {
+            isPending.value = false
+            variables.value = null
+        }
     }
 
     return {
         mutateAsync,
         mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
-        isLoading: ref(false)
+        isPending,
+        isLoading: isPending,
+        error,
+        variables
     }
 }
