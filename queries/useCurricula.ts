@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/vue-query'
 import { qk } from './keys'
 import { computed, unref, type Ref, type ComputedRef } from 'vue'
 import {
@@ -16,71 +15,109 @@ const toVal = <T,>(src: MaybeReactive<T>) =>
     typeof src === 'function' ? computed(() => (src as any)()) : computed(() => unref(src as any))
 
 export function useCurricula() {
-    return useQuery<Curriculum[]>({
-        queryKey: qk.curricula,
-        queryFn: () => CurriculumAPI.fetchAll(),
-        staleTime: 5 * 60_000,
-        placeholderData: (p) => p,
-    })
+    const key = computed(() => qk.curricula.join(':'))
+    const { data, pending, error, refresh } = useAsyncData<Curriculum[]>(
+        key.value,
+        () => CurriculumAPI.fetchAll(),
+        {
+            placeholderData: (p) => p
+            // staleTime handled by Nuxt default or manual
+        }
+    )
+    return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useSections(curriculumId: MaybeReactive<string | null | undefined>) {
     const id = toVal(curriculumId) // string|null|undefined
-    return useQuery<Section[]>({
-        enabled: () => !!id.value,
-        queryKey: computed(() => qk.sections(id.value ?? '')),
-        queryFn: () => CurriculumAPI.fetchSectionsByCurriculumId(id.value!),
-        staleTime: 5 * 60_000,
-        placeholderData: (p) => p,
-    })
+    const key = computed(() => qk.sections(id.value ?? '').join(':'))
+    
+    const { data, pending, error, refresh } = useAsyncData<Section[]>(
+        key.value,
+        () => {
+            if (!id.value) return Promise.resolve([])
+            return CurriculumAPI.fetchSectionsByCurriculumId(id.value)
+        },
+        {
+            watch: [id],
+            placeholderData: (p) => p
+        }
+    )
+    return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useLessons(sectionId: MaybeReactive<number | undefined>) {
     const id = toVal(sectionId)
-    return useQuery<Lesson[]>({
-        enabled: () => !!id.value,
-        queryKey: computed(() => qk.lessons(String(id.value ?? ''))),
-        queryFn: () => CurriculumAPI.fetchLessonsBySectionId(id.value!),
-        staleTime: 5 * 60_000,
-        placeholderData: (p) => p,
-    })
+    const key = computed(() => qk.lessons(String(id.value ?? '')).join(':'))
+
+    const { data, pending, error, refresh } = useAsyncData<Lesson[]>(
+        key.value,
+        () => {
+             if (!id.value) return Promise.resolve([])
+             return CurriculumAPI.fetchLessonsBySectionId(id.value)
+        },
+        {
+            watch: [id],
+            placeholderData: (p) => p
+        }
+    )
+    return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useTopics(lessonId: MaybeReactive<number | undefined>) {
     const id = toVal(lessonId)
-    return useQuery<Topic[]>({
-        enabled: () => !!id.value,
-        queryKey: computed(() => qk.topics(String(id.value ?? ''))),
-        queryFn: () => CurriculumAPI.fetchTopicsByLessonId(id.value!),
-        select: (rows) =>
-            [...rows].sort((a, b) => {
+    const key = computed(() => qk.topics(String(id.value ?? '')).join(':'))
+    
+    const { data, pending, error, refresh } = useAsyncData<Topic[]>(
+        key.value,
+        async () => {
+             if (!id.value) return Promise.resolve([])
+             const rows = await CurriculumAPI.fetchTopicsByLessonId(id.value)
+             return [...rows].sort((a, b) => {
                 const sa = a.sort_order ?? 9_999
                 const sb = b.sort_order ?? 9_999
                 return sa === sb ? String(a.id).localeCompare(String(b.id)) : sa - sb
-            }),
-        staleTime: 5 * 60_000,
-        placeholderData: (p) => p,
-    })
+            })
+        },
+        {
+            watch: [id],
+            placeholderData: (p) => p
+        }
+    )
+    return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useCurriculumTree(curriculumId: MaybeReactive<string | null | undefined>) {
     const id = toVal(curriculumId)
-    return useQuery<CurriculumTree>({
-        enabled: () => !!id.value,
-        queryKey: computed(() => qk.tree(id.value ?? '')),
-        queryFn: () => CurriculumAPI.fetchTree(id.value!),
-        staleTime: 10 * 60_000,
-        placeholderData: (p) => p,
-    })
+    const key = computed(() => qk.tree(id.value ?? '').join(':'))
+    
+    const { data, pending, error, refresh } = useAsyncData<CurriculumTree>(
+        key.value,
+        () => {
+            if (!id.value) return Promise.resolve({})
+            return CurriculumAPI.fetchTree(id.value)
+        },
+        {
+            watch: [id],
+            placeholderData: (p) => p
+        }
+    )
+    return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useCurriculumStats(curriculumId: MaybeReactive<string | null | undefined>) {
     const id = toVal(curriculumId)
-    return useQuery<{ sections: number; lessons: number; topics: number }>({
-        enabled: () => !!id.value,
-        queryKey: computed(() => qk.stats(id.value ?? '')),
-        queryFn: () => CurriculumAPI.fetchStats(id.value!),
-        staleTime: 2 * 60_000,
-        placeholderData: (p) => p,
-    })
+    const key = computed(() => qk.stats(id.value ?? '').join(':'))
+    
+    const { data, pending, error, refresh } = useAsyncData<{ sections: number; lessons: number; topics: number }>(
+        key.value,
+        () => {
+            if (!id.value) return Promise.resolve({ sections: 0, lessons: 0, topics: 0 })
+            return CurriculumAPI.fetchStats(id.value)
+        },
+        {
+            watch: [id],
+            placeholderData: (p) => p
+        }
+    )
+    return { data, isLoading: pending, error, refetch: refresh }
 }

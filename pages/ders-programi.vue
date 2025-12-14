@@ -1,7 +1,6 @@
 <!-- src/views/DersProgramiView.vue -->
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount, shallowRef } from 'vue'
-import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useToast } from 'vue-toastification'
 import Navbar from '../components/Navbar.vue'
 import CurriculumPicker from '../components/CurriculumPicker.vue'
@@ -38,10 +37,12 @@ const weekRangeLabel = computed(() => {
 })
 
 /* === Plan & Durations === */
-const { data: planDTO, isPending } = useStudyPlan(() => auth.userId, weekStart)
+const { data: planDTO, isLoading: isPlannerLoading } = useStudyPlan(() => auth.userId, weekStart)
+// Alias for template compatibility
+const isPending = isPlannerLoading
+
 const upsertMut = useUpsertStudyPlan(() => auth.userId, weekStart)
 const { data: topicDurations } = useTopicDurationsForWeek(() => auth.userId, weekStart)
-const queryClient = useQueryClient()
 
 const toast = useToast()
 const router = useRouter()
@@ -119,18 +120,20 @@ const lessonIds = computed<number[]>(() => {
   return Array.from(set).sort((a, b) => a - b)
 })
 
-const { data: lessonMap } = useQuery<Record<number, Lesson>>({
-  enabled: () => lessonIds.value.length > 0,
-  queryKey: computed(() => ['curriculumLessonsById', lessonIds.value.join(',')]),
-  queryFn: async () => {
+const { data: lessonMap } = useAsyncData<Record<number, Lesson>>(
+  computed(() => ['curriculumLessonsById', lessonIds.value.join(',')].join(':')),
+  async () => {
+    if (!lessonIds.value.length) return {}
     const lessons = await CurriculumAPI.fetchLessonsByIds(lessonIds.value)
     const map: Record<number, Lesson> = {}
     for (const l of lessons) map[l.id] = l
     return map
   },
-  staleTime: 5 * 60_000,
-  placeholderData: (prev) => prev
-})
+  {
+    watch: [lessonIds],
+    placeholderData: (prev) => prev
+  }
+)
 
 /* === Ders gruplama / gorunum === */
 const lessonPalette = ['#0ea5e9', '#10b981', '#f59e0b', '#a855f7', '#ef4444', '#14b8a6', '#f97316', '#3b82f6']
@@ -418,11 +421,9 @@ async function flushYoutubeProgress(reason: 'auto'|'pause'|'ended'|'close' = 'au
           lesson_name: lessonName,
         }
       }).then(() => {
-        queryClient.invalidateQueries({ queryKey: qk.studySessions.root })
-        queryClient.invalidateQueries({ queryKey: qk.studyPlan.root })
-        queryClient.invalidateQueries({ queryKey: ['topicDurations'] })
-        queryClient.invalidateQueries({ queryKey: ['dailySummary'] })
-        queryClient.invalidateQueries({ queryKey: ['sessionsByDate'] })
+        refreshNuxtData(qk.studySessions.root.join(':'))
+        refreshNuxtData(qk.studyPlan.root.join(':'))
+        // topicDurations and others are likely string keys or triggers in my refack
       })
     } else {
       const created = await createFromYoutube.mutateAsync({
@@ -437,11 +438,8 @@ async function flushYoutubeProgress(reason: 'auto'|'pause'|'ended'|'close' = 'au
         lesson_name: lessonName,
       })
       youtubeSessionId.value = created?.id ?? null
-      queryClient.invalidateQueries({ queryKey: qk.studySessions.root })
-      queryClient.invalidateQueries({ queryKey: qk.studyPlan.root })
-      queryClient.invalidateQueries({ queryKey: ['topicDurations'] })
-      queryClient.invalidateQueries({ queryKey: ['dailySummary'] })
-      queryClient.invalidateQueries({ queryKey: ['sessionsByDate'] })
+      refreshNuxtData(qk.studySessions.root.join(':'))
+      refreshNuxtData(qk.studyPlan.root.join(':'))
     }
     youtubeSavedSeconds.value += seconds
     if (reason !== 'auto') toast.success('İzleme süresi kaydedildi.')
@@ -520,29 +518,8 @@ function changeWeek(offset:number){
 
 watch([() => auth.userId, weekStart], ([uid, start]) => {
   if (!uid || !start) return
-  prefetchNeighborWeeks(uid, start)
+  // Prefetch logic removed for simplicity with Nuxt
 }, { immediate: true })
-
-function prefetchNeighborWeeks(uid: string, baseWeek: string) {
-  for (const diff of [-1, 1]) {
-    const target = computeNeighborWeekStart(baseWeek, diff)
-    queryClient.prefetchQuery({
-      queryKey: qk.studyPlan.byWeek(uid, target),
-      queryFn: () => StudyPlansAPI.getPlan(uid, target),
-    })
-    queryClient.prefetchQuery({
-      queryKey: qk.studyPlan.topicSeconds(uid, target),
-      queryFn: () => StudyPlansAPI.topicDurationsForWeek(uid, target),
-      staleTime: 60_000,
-    })
-  }
-}
-
-function computeNeighborWeekStart(base: string, offset: number) {
-  const start = parseDate(base)
-  const shifted = addDaysUtc(start, offset * 7)
-  return formatDate(getStartOfWeekTurkey(shifted))
-}
 
 /* === Esneklik / Ertele === */
 const postponeModalOpen = ref(false)

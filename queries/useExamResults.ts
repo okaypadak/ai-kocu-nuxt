@@ -1,5 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { computed, unref, type Ref, type ComputedRef } from 'vue'
+import { computed, unref, type Ref, type ComputedRef, ref } from 'vue'
 import {
     ExamResultsAPI,
     type ExamResult,
@@ -17,6 +16,8 @@ const toVal = <T,>(src: MaybeReactive<T>) =>
         ? computed(() => (src as any)())
         : computed(() => unref(src as any))
 
+export const useExamResultsTrigger = () => useState('examResultsTrigger', () => 0)
+
 /** Son N kayıt (user + topic) */
 export function useRecentExamResults(
     userId: MaybeReactive<string | undefined>,
@@ -25,32 +26,30 @@ export function useRecentExamResults(
 ) {
     const uid = toVal(userId)
     const tid = toVal(topicId)
+    const trigger = useExamResultsTrigger()
 
-    return useQuery<ExamResult[]>({
-        enabled: () => !!uid.value && !!tid.value,
-        queryKey: computed(() => [
-            'examResults',
-            'recent',
-            uid.value ?? '',
-            tid.value ?? '',
-            String(limit),
-        ]),
-        queryFn: () =>
-            ExamResultsAPI.listRecentByTopic(uid.value!, tid.value!, limit),
-        placeholderData: (p) => p,
-    })
+    const key = computed(() => [
+        'examResults',
+        'recent',
+        uid.value ?? '',
+        tid.value ?? '',
+        String(limit),
+    ].join(':'))
+
+    const { data, pending, error, refresh } = useAsyncData<ExamResult[]>(
+        key.value,
+        () => {
+            if (!uid.value || !tid.value) return Promise.resolve([])
+            return ExamResultsAPI.listRecentByTopic(uid.value, tid.value, limit)
+        },
+        {
+            watch: [trigger],
+            placeholderData: (p) => p,
+        }
+    )
+    return { data, isLoading: pending, error, refetch: refresh }
 }
 
-/**
- * Haftalık veriler:
- * - userId zorunlu
- * - weekStartISO zorunlu (hafta pazartesi 00:00)
- * - weekEndISO   zorunlu (haftaStart + 7gün)
- * - curriculumId opsiyonel (ör: TYT / AYT ayrımı)
- *
- * Dönen data: ham exam_result[]
- * Component içinde günlere göre gruplayacağız.
- */
 export function useWeeklyExamResults(
     userId: MaybeReactive<string | undefined>,
     weekStartISO: MaybeReactive<string | undefined>,
@@ -61,26 +60,34 @@ export function useWeeklyExamResults(
     const ws = toVal(weekStartISO)
     const we = toVal(weekEndISO)
     const cid = toVal(curriculumId)
+    const trigger = useExamResultsTrigger()
 
-    return useQuery<ExamResult[]>({
-        enabled: () => !!uid.value && !!ws.value && !!we.value,
-        queryKey: computed(() => [
-            'examResults',
-            'weekly',
-            uid.value ?? '',
-            ws.value ?? '',
-            we.value ?? '',
-            cid.value ?? '',
-        ]),
-        queryFn: () =>
-            ExamResultsAPI.listByDateRange(
-                uid.value!,
-                ws.value!,
-                we.value!,
+    const key = computed(() => [
+        'examResults',
+        'weekly',
+        uid.value ?? '',
+        ws.value ?? '',
+        we.value ?? '',
+        cid.value ?? '',
+    ].join(':'))
+
+    const { data, pending, error, refresh } = useAsyncData<ExamResult[]>(
+        key.value,
+        () => {
+            if (!uid.value || !ws.value || !we.value) return Promise.resolve([])
+            return ExamResultsAPI.listByDateRange(
+                uid.value,
+                ws.value,
+                we.value,
                 cid.value ?? null
-            ),
-        placeholderData: (p) => p,
-    })
+            )
+        },
+        {
+            watch: [trigger],
+            placeholderData: (p) => p,
+        }
+    )
+    return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useWeeklyGeneralExamResults(
@@ -93,72 +100,71 @@ export function useWeeklyGeneralExamResults(
     const ws = toVal(weekStartISO)
     const we = toVal(weekEndISO)
     const cid = toVal(curriculumId)
+    const trigger = useExamResultsTrigger()
 
-    return useQuery<GeneralExamResult[]>({
-        enabled: () => !!uid.value && !!ws.value && !!we.value,
-        queryKey: computed(() => [
-            'generalExamResults',
-            'weekly',
-            uid.value ?? '',
-            ws.value ?? '',
-            we.value ?? '',
-            cid.value ?? '',
-        ]),
-        queryFn: () =>
-            GeneralExamResultsAPI.listByDateRange(
-                uid.value!,
-                ws.value!,
-                we.value!,
+    const key = computed(() => [
+        'generalExamResults',
+        'weekly',
+        uid.value ?? '',
+        ws.value ?? '',
+        we.value ?? '',
+        cid.value ?? '',
+    ].join(':'))
+
+    const { data, pending, error, refresh } = useAsyncData<GeneralExamResult[]>(
+        key.value,
+        () => {
+            if (!uid.value || !ws.value || !we.value) return Promise.resolve([])
+            return GeneralExamResultsAPI.listByDateRange(
+                uid.value,
+                ws.value,
+                we.value,
                 cid.value ?? null
-            ),
-        placeholderData: (p) => p,
-    })
+            )
+        },
+        {
+            watch: [trigger],
+            placeholderData: (p) => p,
+        }
+    )
+    return { data, isLoading: pending, error, refetch: refresh }
 }
 
 /** Kayıt oluşturma */
 export function useCreateExamResult(
     userId: MaybeReactive<string | undefined>
 ) {
-    const qc = useQueryClient()
     const uid = toVal(userId)
+    const trigger = useExamResultsTrigger()
 
-    return useMutation({
-        mutationFn: (payload: ExamResultCreate) =>
-            ExamResultsAPI.create(uid.value!, payload),
-        onSuccess: (_d, v) => {
-            // konuya göre listeyi yenile
-            const topicKey = String(v.topic_uuid ?? '')
-            qc.invalidateQueries({
-                queryKey: [
-                    'examResults',
-                    'recent',
-                    uid.value ?? '',
-                    topicKey,
-                ],
-            })
-            // weekly list'ler de potansiyel olarak değişti.
-            qc.invalidateQueries({
-                queryKey: ['examResults', 'weekly'],
-                exact: false,
-            })
-        },
-    })
+    async function mutateAsync(payload: ExamResultCreate) {
+        const res = await ExamResultsAPI.create(uid.value!, payload)
+        trigger.value++
+        return res
+    }
+
+    return {
+        mutateAsync,
+        mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
+        isLoading: ref(false)
+    }
 }
 
 export function useCreateGeneralExamResult(
     userId: MaybeReactive<string | undefined>
 ) {
-    const qc = useQueryClient()
     const uid = toVal(userId)
+    const trigger = useExamResultsTrigger()
 
-    return useMutation({
-        mutationFn: (payload: GeneralExamResultCreate) =>
-            GeneralExamResultsAPI.create(uid.value!, payload),
-        onSuccess: () => {
-            qc.invalidateQueries({
-                queryKey: ['generalExamResults'],
-                exact: false,
-            })
-        },
-    })
+    async function mutateAsync(payload: GeneralExamResultCreate) {
+        const res = await GeneralExamResultsAPI.create(uid.value!, payload)
+        trigger.value++
+        return res
+    }
+
+    return {
+        mutateAsync,
+        mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
+        isLoading: ref(false)
+    }
 }

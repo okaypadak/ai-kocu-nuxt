@@ -1,7 +1,6 @@
 <!-- src/views/CurriculaAdminView.vue -->
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { useToast } from 'vue-toastification'
 import Navbar from '../components/Navbar.vue'
 import {
@@ -12,11 +11,11 @@ import {
   type Topic
 } from '../api/curriculum'
 import { qk } from '../queries/keys'
+import { useCurricula, useCurriculumTree } from '../queries/useCurricula'
 
 type DraftMap<T> = Record<string | number, T>
 
 const toast = useToast()
-const queryClient = useQueryClient()
 
 const selectedCurriculumId = ref<string | null>(null)
 const creatingNew = ref(false)
@@ -53,23 +52,18 @@ function generateCurriculumId() {
   return `cur-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
 }
 
-const { data: curriculaData, isFetching: curriculaLoading, error: curriculaError } = useQuery({
-  queryKey: qk.curricula,
-  queryFn: CurriculumAPI.fetchAll,
-})
+const { data: curriculaData, isLoading: curriculaLoading, error: curriculaError } = useCurricula()
 
 const curriculaList = computed(() => curriculaData.value ?? [])
 
-const treeQuery = useQuery({
-  enabled: computed(() => !!selectedCurriculumId.value && !creatingNew.value),
-  queryKey: computed(() => qk.tree(selectedCurriculumId.value ?? '')),
-  queryFn: () => CurriculumAPI.fetchTree(selectedCurriculumId.value!),
-})
+// Only enable if selected
+const treeId = computed(() => (creatingNew.value ? null : selectedCurriculumId.value))
+const { data: treeData } = useCurriculumTree(treeId)
 
-const sectionList = computed<SectionWithLessons[]>(() => treeQuery.data.value?.sections ?? [])
+const sectionList = computed<SectionWithLessons[]>(() => treeData.value?.sections ?? [])
 
 const treeStats = computed(() => {
-  const sections = treeQuery.data.value?.sections ?? []
+  const sections = treeData.value?.sections ?? []
   let lessons = 0
   let topics = 0
   sections.forEach((section) => {
@@ -130,7 +124,7 @@ watch(
 )
 
 watch(
-  () => treeQuery.data.value,
+  () => treeData.value,
   (tree) => {
     const sections = tree?.sections ?? []
     const sectionMap: DraftMap<{ code: string; name: string }> = {}
@@ -241,7 +235,7 @@ function handleError(message: string, error?: unknown) {
 function invalidateCurrentTree(targetId?: string | null) {
   const id = targetId ?? selectedCurriculumId.value
   if (!id) return
-  queryClient.invalidateQueries({ queryKey: qk.tree(id) })
+  refreshNuxtData(qk.tree(id).join(':'))
 }
 
 async function onSaveCurriculum() {
@@ -260,7 +254,7 @@ async function onSaveCurriculum() {
       notes: splitNotes(formState.notesText)
     }
     const saved = await CurriculumAPI.saveCurriculum(payload)
-    queryClient.invalidateQueries({ queryKey: qk.curricula })
+    refreshNuxtData(qk.curricula.join(':'))
     if (saved.id) {
       selectedCurriculumId.value = saved.id
       creatingNew.value = false
@@ -281,7 +275,7 @@ async function onDeleteCurriculum() {
   const currId = selectedCurriculumId.value
   try {
     await CurriculumAPI.removeCurriculum(currId!)
-    queryClient.invalidateQueries({ queryKey: qk.curricula })
+    refreshNuxtData(qk.curricula.join(':'))
     invalidateCurrentTree(currId)
     selectedCurriculumId.value = null
     clearForm()

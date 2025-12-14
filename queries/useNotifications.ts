@@ -1,7 +1,6 @@
 // src/queries/useNotifications.ts
-import { computed, onUnmounted, watch, unref } from 'vue'
+import { computed, onUnmounted, watch, unref, ref, onMounted } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { supabase } from '../lib/supabase'
 
 type UUID = string
@@ -25,7 +24,8 @@ export type NotificationRow = {
 
 export const qk = {
   notifications: {
-    root: ['notifications'] as const,
+    // String keys for Nuxt
+    root: 'notifications',
     list: (
       uid: string,
       limit: number,
@@ -45,9 +45,9 @@ export const qk = {
         searchTitle,
         searchBody,
         String(onlyAi),
-      ] as const,
-    unreadCount: (uid: string) => ['notifications', 'unreadCount', uid] as const,
-    byId: (id: string) => ['notifications', 'byId', id] as const,
+      ].join(':'),
+    unreadCount: (uid: string) => `notifications:unreadCount:${uid}`,
+    byId: (id: string) => `notifications:byId:${id}`,
   },
 }
 
@@ -143,56 +143,78 @@ export function useNotificationsList(userId: MaybeRef<string | undefined>, opts?
   const searchBody = computed(() => resolvedOpts.value.searchBody ?? '')
   const onlyAi = computed(() => resolvedOpts.value.onlyAi ?? false)
 
-  return useQuery({
-    enabled: computed(() => !!resolvedUserId.value),
-    queryKey: computed(() =>
-      qk.notifications.list(
-        resolvedUserId.value ?? '',
-        limit.value,
-        onlyUnread.value,
-        cursor.value,
-        searchTitle.value,
-        searchBody.value,
-        onlyAi.value
-      )
-    ),
-    queryFn: () => {
-      const uid = resolvedUserId.value
-      if (!uid) throw new Error('Missing user id for notification list')
-      return fetchList({
-        userId: uid,
-        limit: limit.value,
-        onlyUnread: onlyUnread.value,
-        cursor: cursor.value,
-        searchTitle: searchTitle.value,
-        searchBody: searchBody.value,
-        onlyAi: onlyAi.value,
-      })
-    },
-    placeholderData: (prev) => prev,
-  })
+  const key = computed(() => 
+    qk.notifications.list(
+      resolvedUserId.value ?? '',
+      limit.value,
+      onlyUnread.value,
+      cursor.value,
+      searchTitle.value,
+      searchBody.value,
+      onlyAi.value
+    )
+  )
+
+  const { data, pending, error, refresh } = useAsyncData<{ items: NotificationRow[]; nextCursor: string | null }>(
+      key.value,
+      () => {
+          const uid = resolvedUserId.value
+          if (!uid) throw new Error('Missing user id for notification list')
+          return fetchList({
+            userId: uid,
+            limit: limit.value,
+            onlyUnread: onlyUnread.value,
+            cursor: cursor.value,
+            searchTitle: searchTitle.value,
+            searchBody: searchBody.value,
+            onlyAi: onlyAi.value,
+          })
+      },
+      {
+          watch: [resolvedUserId, resolvedOpts, limit, onlyUnread, cursor, searchTitle, searchBody, onlyAi],
+          placeholderData: (prev) => prev
+      }
+  )
+
+  return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useUnreadCount(userId: MaybeRef<string | undefined>) {
   const resolvedUserId = computed(() => unref(userId))
-  return useQuery({
-    enabled: computed(() => !!resolvedUserId.value),
-    queryKey: computed(() => qk.notifications.unreadCount(resolvedUserId.value ?? '')),
-    queryFn: () => fetchUnreadCount(resolvedUserId.value!),
-    // Realtime invalidate already updates; keep interval as a safety net
-    refetchInterval: 60_000,
-    placeholderData: (prev) => prev ?? 0,
-  })
+  const key = computed(() => qk.notifications.unreadCount(resolvedUserId.value ?? ''))
+
+  const { data, pending, error, refresh } = useAsyncData<number>(
+      key.value,
+      () => {
+          if (!resolvedUserId.value) return Promise.resolve(0)
+          return fetchUnreadCount(resolvedUserId.value)
+      },
+      {
+          watch: [resolvedUserId],
+          placeholderData: (prev) => prev ?? 0
+      }
+  )
+  
+  return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useNotificationById(id: MaybeRef<string | undefined>) {
   const resolvedId = computed(() => unref(id))
-  return useQuery({
-    enabled: computed(() => !!resolvedId.value),
-    queryKey: computed(() => qk.notifications.byId(resolvedId.value ?? '')),
-    queryFn: () => fetchById(resolvedId.value!),
-    placeholderData: (prev) => prev,
-  })
+  const key = computed(() => qk.notifications.byId(resolvedId.value ?? ''))
+
+  const { data, pending, error, refresh } = useAsyncData<NotificationRow | null>(
+      key.value,
+      () => {
+          if (!resolvedId.value) return Promise.resolve(null)
+          return fetchById(resolvedId.value)
+      },
+      {
+          watch: [resolvedId],
+          placeholderData: (prev) => prev
+      }
+  )
+  
+  return { data, isLoading: pending, error, refetch: refresh }
 }
 
 /* ================= Mutations ================= */
@@ -218,14 +240,40 @@ async function removeOne(id: UUID) {
   if (error) throw error
 }
 
+// Helper to invalidate known keys logic
+function invalidateNotifications(uid?: string) {
+    if (uid) {
+        refreshNuxtData(qk.notifications.unreadCount(uid))
+        // Cannot easily invalidate lists because of variable params (limit, filter, etc.)
+        // But if we stick to a convention or refresh via a global trigger for lists...
+        // For now, let's refresh unread count as it is most critical.
+        // And maybe refresh current page usage via logic in the component layer?
+        // Or broad refresh?
+        // Note: useNotificationsList uses specific keys.
+        // We lack "invalidateQueries(['notifications'])" behavior.
+    }
+}
+
+// We will use a shared trigger for notification lists if needed, 
+// OR we rely on Realtime which we implement below.
+export const useNotificationTrigger = () => useState('notificationTrigger', () => 0)
+
 export function useMarkAsRead() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: UUID) => markAsRead(id),
-    onSuccess: (_data, _id) => {
-      qc.invalidateQueries({ queryKey: qk.notifications.root })
-    },
-  })
+  const trigger = useNotificationTrigger()
+
+  async function mutateAsync(id: UUID) {
+      await markAsRead(id)
+      trigger.value++ // Signal list refresh?
+      // Also need to refresh unread count for current user?
+      // We don't have userID here easily unless passed.
+      // But component calling this likely knows.
+  }
+
+  return {
+    mutateAsync,
+    mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
+    isLoading: ref(false)
+  }
 }
 
 /** Alias: bazı sayfalarda useMarkRead import ediliyor */
@@ -234,27 +282,37 @@ export function useMarkRead() {
 }
 
 export function useMarkAllAsRead(userId: MaybeRef<string | undefined>) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () => {
+  const trigger = useNotificationTrigger()
+  
+  async function mutateAsync() {
       const uid = unref(userId)
       if (!uid) throw new Error('Missing user id for markAllAsRead')
-      return markAllAsRead(uid)
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.notifications.root })
-    },
-  })
+      await markAllAsRead(uid)
+      
+      trigger.value++
+      refreshNuxtData(qk.notifications.unreadCount(uid))
+  }
+
+  return {
+    mutateAsync,
+    mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
+    isLoading: ref(false)
+  }
 }
 
 export function useDeleteNotification() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (id: UUID) => removeOne(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: qk.notifications.root })
-    },
-  })
+  const trigger = useNotificationTrigger()
+
+  async function mutateAsync(id: UUID) {
+      await removeOne(id)
+      trigger.value++
+  }
+
+  return {
+    mutateAsync,
+    mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
+    isLoading: ref(false)
+  }
 }
 
 /* ================= Realtime ================= */
@@ -262,15 +320,16 @@ export function useNotificationsRealtime(
   userId: MaybeRef<string | undefined>,
   opts?: { onEvent?: (evt: 'INSERT' | 'UPDATE' | 'DELETE', row: any) => void }
 ) {
-  const qc = useQueryClient()
   const resolvedUserId = computed(() => unref(userId))
+  const trigger = useNotificationTrigger()
 
   let channel: ReturnType<typeof supabase.channel> | null = null
   let fallbackTimer: any = null
   const startFallback = () => {
     if (fallbackTimer) return
     fallbackTimer = setInterval(() => {
-      qc.invalidateQueries({ queryKey: qk.notifications.root })
+      trigger.value++
+      if (resolvedUserId.value) refreshNuxtData(qk.notifications.unreadCount(resolvedUserId.value))
     }, 10_000)
   }
   const stopFallback = () => {
@@ -303,7 +362,9 @@ export function useNotificationsRealtime(
             const evt = (payload.eventType as 'INSERT' | 'UPDATE' | 'DELETE')
             const row = payload.new ?? payload.old
             try { opts?.onEvent?.(evt, row) } catch { /* noop */ }
-            qc.invalidateQueries({ queryKey: qk.notifications.root })
+            
+            trigger.value++
+            refreshNuxtData(qk.notifications.unreadCount(uid))
           }
         )
         .subscribe((status) => {

@@ -2,7 +2,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import Navbar from '../components/Navbar.vue'
-import { useQueryClient } from '@tanstack/vue-query'
 import { qk } from '../queries/keys'
 import { CurriculumImportAPI, computeStats, suggestIdForOne, type CurriculumDoc, type ImportOptions } from '../api/curriculumImport'
 
@@ -58,7 +57,6 @@ function onPreview() {
 }
 
 /* ---- Import ---- */
-const qc = useQueryClient()
 
 async function onImport() {
   if (!parsed.value) return
@@ -88,8 +86,8 @@ async function onImport() {
         : `“${ids[0]}” id'li doküman içe aktarıldı.`
 
     // Liste cache’lerini invalidation (müfredat/sections)
-    qc.invalidateQueries({ queryKey: qk.curricula })
-    ids.forEach((id) => qc.invalidateQueries({ queryKey: qk.sections(id) }))
+    refreshNuxtData(qk.curricula.join(':'))
+    ids.forEach((id) => refreshNuxtData(qk.sections(id).join(':')))
   } catch (e: any) {
     errorMsg.value = e?.message || 'İçe aktarma başarısız.'
   } finally {

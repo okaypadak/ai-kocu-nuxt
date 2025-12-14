@@ -1,6 +1,5 @@
 // src/queries/sprints.ts
-import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
-import { computed, unref, type Ref, type ComputedRef } from 'vue'
+import { computed, unref, type Ref, type ComputedRef, ref } from 'vue'
 import { SprintsAPI, type SprintGenerateInput, type SprintGenerateResult, type SprintSummary } from '../api/sprints'
 import { qk } from './keys'
 
@@ -9,38 +8,58 @@ const toVal = <T,>(src: MaybeReactive<T>) =>
     typeof src === 'function' ? computed(() => (src as any)()) : computed(() => unref(src as any))
 
 export function useGenerateSprint() {
-    return useMutation<SprintGenerateResult, Error, SprintGenerateInput>({
-        mutationFn: (payload) => SprintsAPI.generate(payload)
-    })
+    async function mutateAsync(payload: SprintGenerateInput) {
+        return SprintsAPI.generate(payload)
+    }
+
+    return {
+        mutateAsync,
+        mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
+        isLoading: ref(false)
+    }
 }
 
 export function useUserSprints(userId: MaybeReactive<string | undefined>) {
     const uid = toVal(userId)
-    return useQuery<SprintSummary[]>({
-        enabled: () => !!uid.value,
-        queryKey: computed(() => qk.sprints.list(uid.value ?? '')),
-        queryFn: () => SprintsAPI.listByUser(uid.value!),
-        placeholderData: (prev) => prev
-    })
+    const key = computed(() => qk.sprints.list(uid.value ?? '').join(':'))
+
+    const { data, pending, error, refresh } = useAsyncData<SprintSummary[]>(
+        key.value,
+        () => {
+            if (!uid.value) return Promise.resolve([])
+            return SprintsAPI.listByUser(uid.value)
+        },
+        {
+            watch: [uid],
+            // placeholderData: (prev) => prev
+        }
+    )
+
+    return { data, isLoading: pending, error, refetch: refresh }
 }
 
 export function useDeleteSprint(userId: MaybeReactive<string | undefined>) {
     const uid = toVal(userId)
-    const qc = useQueryClient()
-    return useMutation<void, Error, string>({
-        mutationFn: (sprintId) => {
-            if (!uid.value) {
-                throw new Error('Kullanıcı bulunamadı')
-            }
-            if (!sprintId) {
-                throw new Error('Koşu bulunamadı')
-            }
-            return SprintsAPI.deleteById(uid.value, sprintId)
-        },
-        onSuccess: () => {
-            if (uid.value) {
-                qc.invalidateQueries({ queryKey: qk.sprints.list(uid.value) })
-            }
+    
+    async function mutateAsync(sprintId: string) {
+        if (!uid.value) {
+            throw new Error('Kullanıcı bulunamadı')
         }
-    })
+        if (!sprintId) {
+            throw new Error('Koşu bulunamadı')
+        }
+        const res = await SprintsAPI.deleteById(uid.value, sprintId)
+        
+        // Refresh cache
+        const key = qk.sprints.list(uid.value).join(':')
+        refreshNuxtData(key)
+        
+        return res
+    }
+
+    return {
+        mutateAsync,
+        mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
+        isLoading: ref(false)
+    }
 }

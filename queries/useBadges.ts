@@ -1,6 +1,5 @@
 // src/queries/useBadges.ts
-import { onMounted, onUnmounted, ref, type Ref } from 'vue'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
+import { onMounted, onUnmounted, ref, type Ref, computed, unref } from 'vue'
 import { supabase } from '../lib/supabase'
 import {
     fetchBadges, fetchUserBadges, awardBadge, revokeBadge,
@@ -8,47 +7,72 @@ import {
 } from '../api/badges'
 
 /** query keys */
-const qk = {
-    badges: ['badges'] as const,
-    userBadges: (uid: string) => ['user_badges', uid] as const,
+export const qk = {
+    badges: 'badges',
+    userBadges: (uid: string) => `user_badges:${uid}`,
 }
 
 /** Katalog */
 export function useBadgesCatalog() {
-    return useQuery<Badge[]>({
-        queryKey: qk.badges,
-        queryFn: fetchBadges,
-        staleTime: 5 * 60_000,
-        placeholderData: (prev) => prev,
-    })
+    return useAsyncData<Badge[]>(
+        qk.badges,
+        fetchBadges,
+        {
+            placeholderData: (prev) => prev
+            // staleTime handled by default
+        }
+    )
+    // Return compatible signature
+    // { data, isLoading: pending, error, refetch: refresh }
 }
 
 /** Kullanıcı kazançları */
 export function useUserBadges(userId?: string) {
-    const enabled = !!userId
-    return useQuery<UserBadge[]>({
-        enabled,
-        queryKey: qk.userBadges(userId ?? ''),
-        queryFn: () => fetchUserBadges(userId!),
-        staleTime: 60_000,
-        placeholderData: (prev) => prev,
-    })
+    const key = computed(() => qk.userBadges(userId ?? ''))
+    
+    const { data, pending, error, refresh } = useAsyncData<UserBadge[]>(
+        key.value,
+        () => {
+            if (!userId) return Promise.resolve([])
+            return fetchUserBadges(userId)
+        },
+        {
+            watch: [() => userId],
+            placeholderData: (prev) => prev
+        }
+    )
+    return { data, isLoading: pending, error, refetch: refresh }
 }
 
 /** Ver / Geri al */
 export function useAwardBadge(userId?: string) {
-    const qc = useQueryClient()
-    return useMutation({
-        mutationFn: (p: { code: string; level: BadgeLevel }) => awardBadge(userId!, p.code, p.level),
-        onSuccess: () => { if (userId) qc.invalidateQueries({ queryKey: qk.userBadges(userId) }) }
-    })
+    async function mutateAsync(p: { code: string; level: BadgeLevel }) {
+        if (!userId) throw new Error('Missing user id')
+        const res = await awardBadge(userId, p.code, p.level)
+        refreshNuxtData(qk.userBadges(userId))
+        return res
+    }
+    
+    return {
+        mutateAsync,
+        mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
+        isLoading: ref(false)
+    }
 }
+
 export function useRevokeBadge(userId?: string) {
-    const qc = useQueryClient()
-    return useMutation({
-        mutationFn: (p: { code: string; level: BadgeLevel }) => revokeBadge(userId!, p.code, p.level),
-        onSuccess: () => { if (userId) qc.invalidateQueries({ queryKey: qk.userBadges(userId) }) }
-    })
+    async function mutateAsync(p: { code: string; level: BadgeLevel }) {
+        if (!userId) throw new Error('Missing user id')
+        const res = await revokeBadge(userId, p.code, p.level)
+        refreshNuxtData(qk.userBadges(userId))
+        return res
+    }
+
+    return {
+        mutateAsync,
+        mutate: (p: any, opts?: any) => mutateAsync(p).then(opts?.onSuccess).catch(opts?.onError),
+        isLoading: ref(false)
+    }
 }
 
 /** Realtime: user_badges (INSERT/DELETE/UPDATE) */
@@ -66,8 +90,7 @@ export function useRealtimeUserBadges(userId?: string) {
                     { event: '*', schema: 'public', table: 'user_badges', filter: `user_id=eq.${userId}` },
                     () => {
                         // invalidate
-                        const qc = useQueryClient()
-                        qc.invalidateQueries({ queryKey: qk.userBadges(userId) })
+                       refreshNuxtData(qk.userBadges(userId))
                     }
                 )
                 .subscribe((s) => { status.value = s === 'SUBSCRIBED' ? 'subscribed' : status.value })
