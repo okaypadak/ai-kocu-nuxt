@@ -116,13 +116,13 @@ premiumError.value = null
 }
 
 const onCardSubmit = async (cardData: CardData) => {
-if (!uid) return
+if (!uid.value) return
 premiumLoading.value = true
 premiumError.value = null
 
 try {
   const pkg = currentPackage.value
-  const res = await createPremiumPayment({ userId: uid, packageUuid: pkg.uuid, cardData })
+  const res = await createPremiumPayment({ userId: uid.value, packageUuid: pkg.uuid, cardData })
   
   if (res.html) {
       threeDSHtml.value = res.html
