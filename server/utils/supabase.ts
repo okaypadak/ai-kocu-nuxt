@@ -3,87 +3,29 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { useRuntimeConfig } from '#imports'
 
 /* ------------------------------------------------------------------ */
-/* ENV + PUBLIC CONFIG (local + canlı uyumlu)                          */
+/* PUBLIC CONFIG (Nuxt runtimeConfig)                                   */
 /* ------------------------------------------------------------------ */
-
-const pickFirst = (...values: Array<string | undefined | null>) =>
-  values.map((v) => (typeof v === 'string' ? v.trim() : v)).find((v) => Boolean(v))
-
-const readServerEnv = (...keys: string[]) => {
-  if (typeof process === 'undefined') return undefined
-  return pickFirst(...keys.map((k) => process.env?.[k]))
-}
-
-const readClientEnv = (...keys: string[]) => {
-  // Vite/Nuxt client build-time env fallback (opsiyonel)
-  const metaEnv = (typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined) as Record<
-    string,
-    string | undefined
-  >
-  if (!metaEnv) return undefined
-  return pickFirst(...keys.map((k) => metaEnv[k]))
-}
 
 export const resolveSupabasePublicConfig = () => {
   const config = useRuntimeConfig()
 
-  const supabaseUrl =
-    pickFirst(
-      config.public?.supabaseUrl,
-      readServerEnv('NUXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL', 'NUXT_SUPABASE_URL', 'VITE_SUPABASE_URL'),
-      readClientEnv('NUXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL', 'NUXT_SUPABASE_URL', 'VITE_SUPABASE_URL')
-    ) ?? undefined
-
-  const supabaseAnonKey =
-    pickFirst(
-      config.public?.supabaseAnonKey,
-      readServerEnv(
-        'NUXT_PUBLIC_SUPABASE_ANON_KEY',
-        'SUPABASE_ANON_KEY',
-        'SUPABASE_KEY',
-        'NUXT_SUPABASE_KEY',
-        'VITE_SUPABASE_ANON_KEY'
-      ),
-      readClientEnv(
-        'NUXT_PUBLIC_SUPABASE_ANON_KEY',
-        'SUPABASE_ANON_KEY',
-        'SUPABASE_KEY',
-        'NUXT_SUPABASE_KEY',
-        'VITE_SUPABASE_ANON_KEY'
-      )
-    ) ?? undefined
-
-  const supabaseProxyUrl =
-    pickFirst(
-      config.public?.supabaseProxyUrl,
-      readServerEnv('NUXT_PUBLIC_SUPABASE_PROXY_URL', 'VITE_SUPABASE_PROXY_URL'),
-      readClientEnv('NUXT_PUBLIC_SUPABASE_PROXY_URL', 'VITE_SUPABASE_PROXY_URL'),
-      '/api/supabase-proxy'
-    ) ?? '/api/supabase-proxy'
+  const supabaseUrl = (config.public?.supabaseUrl || '').trim()
+  const supabaseAnonKey = (config.public?.supabaseAnonKey || '').trim()
+  const supabaseProxyUrl = (config.public?.supabaseProxyUrl || '/api/supabase-proxy').trim()
 
   return { supabaseUrl, supabaseAnonKey, supabaseProxyUrl }
 }
 
 const getConfigServerOnly = () => {
-  if (typeof process !== 'undefined' && (process as any).client) {
-    throw new Error('getConfigServerOnly yalnızca server-side kullanılmalıdır.')
-  }
-
   const config = useRuntimeConfig()
   const { supabaseUrl: SUPABASE_URL, supabaseAnonKey: SUPABASE_ANON_KEY } = resolveSupabasePublicConfig()
 
-  const SUPABASE_SERVICE_ROLE_KEY =
-    pickFirst(
-      config.supabaseServiceRoleKey as string | undefined,
-      readServerEnv('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_KEY')
-    ) ?? undefined
-
-  const PREMIUM_COOKIE_SECRET =
-    pickFirst(config.premiumCookieSecret as string | undefined, readServerEnv('PREMIUM_COOKIE_SECRET')) ?? undefined
+  const SUPABASE_SERVICE_ROLE_KEY = (config.supabaseServiceRoleKey as string | undefined)?.trim()
+  const PREMIUM_COOKIE_SECRET = (config.premiumCookieSecret as string | undefined)?.trim()
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     throw new Error(
-      'Supabase public config eksik: runtimeConfig.public.supabaseUrl ve runtimeConfig.public.supabaseAnonKey (veya NUXT_PUBLIC_SUPABASE_URL / NUXT_PUBLIC_SUPABASE_ANON_KEY).'
+      'Supabase public config eksik: runtimeConfig.public.supabaseUrl ve runtimeConfig.public.supabaseAnonKey doldurulmalı.'
     )
   }
 
@@ -114,7 +56,6 @@ export const getSupabaseClient = () => {
 
   const isServer = typeof process !== 'undefined' && Boolean((process as any).server)
 
-  // Server tarafında singleton tutmuyoruz (request’ler arası state riski).
   if (isServer) {
     return createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
@@ -360,10 +301,7 @@ export const persistPremiumCookie = async (
   const normalized = normalizePremiumEndsAt(endsAt)
   if (!normalized) return null
 
-  cookieAdapter.set(PREMIUM_COOKIE_NAME, serialized, {
-    expires: new Date(normalized)
-  })
-
+  cookieAdapter.set(PREMIUM_COOKIE_NAME, serialized, { expires: new Date(normalized) })
   return normalized
 }
 
@@ -396,7 +334,7 @@ export const isMissingAuthSessionError = (err?: { message?: string }) => {
 }
 
 /* ------------------------------------------------------------------ */
-/* API: /api/supabase-proxy/** handler (server-side only at runtime)    */
+/* API: /api/supabase-proxy/** handler                                  */
 /* ------------------------------------------------------------------ */
 
 const FORBIDDEN_HEADERS = new Set(['host', 'connection', 'content-length'])
@@ -408,7 +346,6 @@ export const supabaseProxyHandler = async (eventInner: any) => {
   const { supabase, cookieAdapter } = await createSupabaseServerClient(eventInner)
   const { supabaseUrl, supabaseAnonKey } = resolveSupabasePublicConfig()
 
-  // AUTH CHECK (mevcut tasarımı koruyoruz)
   let userData: any, userError: any, sessionData: any, sessionError: any
 
   try {
@@ -428,7 +365,6 @@ export const supabaseProxyHandler = async (eventInner: any) => {
     return respond(eventInner, cookieAdapter, 401, { error: resolvedError?.message ?? 'Oturum bulunamadı' })
   }
 
-  // TARGET URL
   const forwardedProto = (eventInner.node.req.headers['x-forwarded-proto'] as string) || 'http'
   const host = eventInner.node.req.headers.host || 'localhost'
   const url = new URL(eventInner.node.req.url || '/', `${forwardedProto}://${host}`)
@@ -436,7 +372,6 @@ export const supabaseProxyHandler = async (eventInner: any) => {
   const forwardedPath = url.pathname.replace(/^\/api\/supabase-proxy/, '') || '/'
   const targetUrl = `${supabaseUrl}${forwardedPath}${url.search}`
 
-  // HEADERS
   const filteredHeaders: Record<string, string> = {}
   for (const [key, value] of Object.entries(eventInner.node.req.headers)) {
     if (!value) continue
@@ -447,25 +382,20 @@ export const supabaseProxyHandler = async (eventInner: any) => {
   filteredHeaders.authorization = `Bearer ${sessionData.session.access_token}`
   filteredHeaders.apikey = supabaseAnonKey as string
 
-  // BODY
   const body =
     ['GET', 'HEAD'].includes(method) || eventInner.node.req.headers['content-length'] === '0'
       ? undefined
       : await readRawBody(eventInner)
 
-  // FETCH
   const response = await fetch(targetUrl, { method, headers: filteredHeaders, body })
 
-  // RESPONSE
   const contentType = response.headers.get('content-type') ?? 'application/octet-stream'
   setResponseStatus(eventInner, response.status)
   setHeader(eventInner, 'content-type', contentType)
 
   cookieAdapter.apply()
 
-  if (method === 'HEAD' || response.status === 204 || response.headers.get('content-length') === '0') {
-    return null
-  }
+  if (method === 'HEAD' || response.status === 204 || response.headers.get('content-length') === '0') return null
 
   if (contentType.includes('application/json')) {
     const text = await response.text()
